@@ -57,7 +57,7 @@ do
         find ${DERIVS_DIR}/${OUTPUT_DIR}/freesurfer/sub-$subject -name "*IsRunning*" -delete
     fi
 
-    echo "singularity run -B ${BIDS_DIR}:/data -B ${DERIVS_DIR}:/derivatives -B $HOME/.cache:/home/fmriprep/.cache --cleanenv ${SINGULARITY_IMAGE} /data /derivatives/${OUTPUT_DIR} participant --participant-label $subject -vv --output-spaces MNI152NLin2009cAsym:res-2 fsnative fsaverage5 --nthreads 12 --omp-nthreads 8 -w $SCRATCH/fmriprep-work/${SLURM_JOB_NAME}-sub-$subject --skip-bids-validation --notrack --fs-license-file ${SINGULARITYENV_FS_LICENSE} --use-aroma" >> ${LAUNCHER_JOB_FILE}
+    echo "singularity run -B ${BIDS_DIR}:/data -B ${DERIVS_DIR}:/derivatives -B $HOME/.cache:/home/fmriprep/.cache --cleanenv ${SINGULARITY_IMAGE} /data /derivatives/${OUTPUT_DIR} participant --participant-label $subject -vv --output-spaces MNI152NLin2009cAsym:res-2 fsnative fsaverage5 --nthreads 12 --omp-nthreads 8 -w $SCRATCH/fmriprep-work/${SLURM_JOB_NAME}-sub-$subject --skip-bids-validation --notrack --fs-license-file ${SINGULARITYENV_FS_LICENSE} --use-aroma --ignore slicetiming" >> ${LAUNCHER_JOB_FILE}
 done
 
 $LAUNCHER_DIR/paramrun
