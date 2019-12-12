@@ -1,4 +1,5 @@
 #!/bin/bash
+#SBATCH -J dlopenneuro
 #SBATCH -p normal
 #SBATCH -o log/%j.out
 #SBATCH -e log/%j.err
@@ -17,8 +18,6 @@ export LAUNCHER_RMI=SLURM
 export LAUNCHER_JOB_FILE=$(pwd)/datalad-${SLURM_JOB_NAME}.${SLURM_JOB_ID}
 export LAUNCHER_LOG_OUTPUT=${LOG_DIR}/datalad-${SLURM_JOB_ID}-%n.out
 export LAUNCHER_LOG_ERROR=${LOG_DIR}/datalad-${SLURM_JOB_ID}-%n.err
-
-BIDS_DIR=$STAGING/${SLURM_JOB_NAME}
 
 # Create tasks file
 rm -f $LAUNCHER_JOB_FILE
