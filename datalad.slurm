@@ -21,7 +21,7 @@ export LAUNCHER_LOG_ERROR=${LOG_DIR}/datalad-${SLURM_JOB_ID}-%n.err
 
 # Create tasks file
 rm -f $LAUNCHER_JOB_FILE
-cat dataset_list.txt | while read line
+cat $(pwd)/dataset_list.txt | while read line
 do
     echo "bash datalad_dl.sh $line" >> $LAUNCHER_JOB_FILE
 done
