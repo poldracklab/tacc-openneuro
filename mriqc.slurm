@@ -37,6 +37,9 @@ fmriprep_ver="${fmriprep_ver#v}"
 DERIVS_DIR="${STAGING}/derivatives/${SLURM_JOB_NAME}"
 OUTPUT_DIR="mriqc-${fmriprep_ver}"
 
+# Ensure permissions for the group
+setfacl -R -m g:G-802037:rwX ${DERIVS_DIR}
+find ${DERIVS_DIR} -type d | xargs setfacl -R -m d:g:G-802037:rwX
 
 # Create tasks file
 rm -f $LAUNCHER_JOB_FILE
