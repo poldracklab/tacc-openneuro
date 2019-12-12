@@ -1,6 +1,6 @@
 #!/bin/bash
 pushd $STAGING
-DATASET=$0
+DATASET=$1
 if [[ ! -d $DATASET ]]; then
     datalad install https://github.com/OpenNeuroDatasets/${DATASET}.git
     mkdir -p derivatives/${DATASET}
