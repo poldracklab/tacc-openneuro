@@ -17,7 +17,7 @@ export STAGING=/corral-repl/utexas/poldracklab/data/OpenNeuro
 export LOG_DIR=${STAGING}/logs/${SLURM_JOB_NAME}
 export LAUNCHER_PLUGIN_DIR=$LAUNCHER_DIR/plugins
 export LAUNCHER_RMI=SLURM
-export LAUNCHER_JOB_FILE=$(pwd)/${SLURM_JOB_NAME}.${SLURM_JOB_ID}
+export LAUNCHER_JOB_FILE=$(pwd)/datalad-${SLURM_JOB_NAME}.${SLURM_JOB_ID}
 export LAUNCHER_LOG_OUTPUT=${LOG_DIR}/datalad-${SLURM_JOB_ID}-%n.out
 export LAUNCHER_LOG_ERROR=${LOG_DIR}/datalad-${SLURM_JOB_ID}-%n.err
 
@@ -27,7 +27,7 @@ BIDS_DIR=$STAGING/${SLURM_JOB_NAME}
 rm -f $LAUNCHER_JOB_FILE
 cat dataset_list.txt | while read line
 do
-    bash datalad_dl.sh $line
+    echo "bash datalad_dl.sh $line" >> $LAUNCHER_JOB_FILE
 done
 
 $LAUNCHER_DIR/paramrun
