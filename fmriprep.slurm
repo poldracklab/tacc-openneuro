@@ -39,9 +39,14 @@ fmriprep_ver="${fmriprep_ver#v}"
 DERIVS_DIR="${STAGING}/derivatives/${SLURM_JOB_NAME}"
 OUTPUT_DIR="fmriprep-${fmriprep_ver}"
 
-
 mkdir -p ${DERIVS_DIR}/freesurfer-6.0.1
 mkdir -p ${DERIVS_DIR}/${OUTPUT_DIR}
+
+# Ensure permissions for the group
+setfacl -R -m g:G-802037:rwX ${DERIVS_DIR}
+find ${DERIVS_DIR} -type d | xargs setfacl -R -m d:g:G-802037:rwX
+
+# Link freesurfer from within the output folder
 if [ ! -d ${DERIVS_DIR}/${OUTPUT_DIR}/freesurfer ]; then
     pushd ${DERIVS_DIR}/${OUTPUT_DIR}
     ln -s ../freesurfer-6.0.1 freesurfer
