@@ -8,10 +8,7 @@
 #------------------------------------------------------
 module purge
 module use /work/01329/poldrack/modules
-
-module load intel python2
-module load launcher/3.4.1
-module load tacc-singularity
+module load anaconda
 
 export STAGING=/corral-repl/utexas/poldracklab/data/OpenNeuro
 export LOG_DIR=${STAGING}/logs/${SLURM_JOB_NAME}
