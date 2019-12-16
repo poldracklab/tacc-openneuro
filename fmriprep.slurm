@@ -53,6 +53,9 @@ if [ ! -d ${DERIVS_DIR}/${OUTPUT_DIR}/freesurfer ]; then
     popd
 fi
 
+# Clear work directory
+rm -rf $SCRATCH/fmriprep-work/*
+
 # Create tasks file
 rm -f $LAUNCHER_JOB_FILE
 tail --lines=+2 $BIDS_DIR/participants.tsv | while read line
