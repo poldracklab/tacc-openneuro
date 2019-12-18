@@ -54,7 +54,7 @@ if [ ! -d ${DERIVS_DIR}/${OUTPUT_DIR}/freesurfer ]; then
 fi
 
 # Clear work directory
-rm -rf $SCRATCH/fmriprep-work/*
+rm -rf $SCRATCH/fmriprep-work/${SLURM_JOB_NAME}-sub-$subject
 
 # Create tasks file
 rm -f $LAUNCHER_JOB_FILE
