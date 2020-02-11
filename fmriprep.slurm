@@ -30,7 +30,7 @@ if [ ! -d $BIDS_DIR ]; then
     exit 1
 fi
 
-SINGULARITY_IMAGE="/work/01329/poldrack/stampede2/singularity_images/poldracklab_fmriprep_1.5.5.simg"
+SINGULARITY_IMAGE="/work/01329/poldrack/stampede2/singularity_images/poldracklab_fmriprep_20.0.0rc1.simg"
 export SINGULARITYENV_FS_LICENSE=$HOME/.freesurfer.txt
 
 mkdir -p $HOME/.cache/{templateflow,fmriprep}
