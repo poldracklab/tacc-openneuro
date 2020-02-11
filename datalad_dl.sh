@@ -9,8 +9,8 @@ if [[ ! -d $DATASET ]]; then
     find ${DATASET} -type d | xargs setfacl -R -m d:g:G-802037:rwX
     
     # Fetch
+    rm -r ${DATASET}/derivatives/
     cd ${DATASET}
-    rm -r derivatives/
     ln -s ../derivatives/${DATASET} derivatives
     find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude\|phasediff\|epi\)\.nii\(\.gz\)?" \
         -exec datalad get {} +
