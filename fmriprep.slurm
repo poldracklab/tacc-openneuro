@@ -53,8 +53,6 @@ if [ ! -d ${DERIVS_DIR}/${OUTPUT_DIR}/freesurfer ]; then
     popd
 fi
 
-# Clear work directory
-rm -rf $SCRATCH/fmriprep-work/${SLURM_JOB_NAME}-sub-$subject
 
 # Create tasks file
 rm -f $LAUNCHER_JOB_FILE
@@ -64,6 +62,9 @@ do
     if [ -d ${DERIVS_DIR}/${OUTPUT_DIR}/freesurfer/sub-$subject ]; then
         find ${DERIVS_DIR}/${OUTPUT_DIR}/freesurfer/sub-$subject -name "*IsRunning*" -delete
     fi
+
+    # Clear work directory
+    rm -rf $SCRATCH/fmriprep-work/${SLURM_JOB_NAME}-sub-$subject
 
     echo "singularity run -B ${BIDS_DIR}:/data -B ${DERIVS_DIR}:/derivatives -B $HOME/.cache:/home/fmriprep/.cache --cleanenv ${SINGULARITY_IMAGE} /data /derivatives/${OUTPUT_DIR} participant --participant-label $subject -vv --output-spaces MNI152NLin2009cAsym:res-2 fsnative fsaverage5 --nthreads 12 --omp-nthreads 8 -w $SCRATCH/fmriprep-work/${SLURM_JOB_NAME}-sub-$subject --skip-bids-validation --notrack --fs-license-file ${SINGULARITYENV_FS_LICENSE} --use-aroma --ignore slicetiming" >> ${LAUNCHER_JOB_FILE}
 done
