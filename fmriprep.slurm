@@ -3,7 +3,7 @@
 #SBATCH -o log/%j.out
 #SBATCH -e log/%j.err
 #SBATCH -t 48:00:00
-#SBATCH --mail-type=ALL   # Opts: NONE, BEGIN, END, FAIL, REQUEUE, ALL
+#SBATCH --mail-type=END   # Opts: NONE, BEGIN END, FAIL, REQUEUE, ALL
 #SBATCH --mail-user=%u@stanford.edu
 #------------------------------------------------------
 module purge
@@ -13,30 +13,41 @@ module load intel python2
 module load launcher/3.4.1
 module load tacc-singularity
 
+# extract dataset name and batch number from job name.
+export DATASET_NAME=${SLURM_JOB_NAME:0:8}
+export BATCH_NUM=${SLURM_JOB_NAME:15}
+
+# set max subjects per batch. note that altering BATCH_SIZE requires also altering batch_size in fmriprep_runjobs.sh
+export BATCH_SIZE=10
+
+# calculate lines in participants.tsv to start and stop on 
+export START_LINE=$(( $BATCH_SIZE * ( BATCH_NUM - 1 ) + 2 ))
+export STOP_LINE=$(( $START_LINE + $BATCH_SIZE - 1))
+
 export STAGING=/corral-repl/utexas/poldracklab/data/OpenNeuro
-export LOG_DIR=${STAGING}/logs/${SLURM_JOB_NAME}
+export LOG_DIR=${STAGING}/logs/${DATASET_NAME}
 
 export LAUNCHER_PLUGIN_DIR=$LAUNCHER_DIR/plugins
 export LAUNCHER_RMI=SLURM
-export LAUNCHER_JOB_FILE=$(pwd)/${SLURM_JOB_NAME}.${SLURM_JOB_ID}
+export LAUNCHER_JOB_FILE=$(pwd)/${DATASET_NAME}.${SLURM_JOB_ID}
 export LAUNCHER_LOG_OUTPUT=${LOG_DIR}/${SLURM_JOB_ID}-%n.out
 export LAUNCHER_LOG_ERROR=${LOG_DIR}/${SLURM_JOB_ID}-%n.err
 
 export STAGING=/corral-repl/utexas/poldracklab/data/OpenNeuro
-BIDS_DIR=$STAGING/${SLURM_JOB_NAME}
-
+BIDS_DIR=$STAGING/${DATASET_NAME}
+BIDS_DIR=$STAGING/${DATASET_NAME}
 if [ ! -d $BIDS_DIR ]; then
     echo "Folder $BIDS_DIR does not exist, please set a job id name (e.g. -J ds000030)"
     exit 1
 fi
 
-SINGULARITY_IMAGE="/work/01329/poldrack/stampede2/singularity_images/poldracklab_fmriprep_20.0.0rc1.simg"
+SINGULARITY_IMAGE="/work/01329/poldrack/stampede2/singularity_images/poldracklab_fmriprep-20.0.6.simg"
 export SINGULARITYENV_FS_LICENSE=$HOME/.freesurfer.txt
 
 mkdir -p $HOME/.cache/{templateflow,fmriprep}
 fmriprep_ver=$( singularity run -B $HOME/.cache:/home/fmriprep/.cache $SINGULARITY_IMAGE --version | cut -d ' ' -f2 )
 fmriprep_ver="${fmriprep_ver#v}"
-DERIVS_DIR="${STAGING}/derivatives/${SLURM_JOB_NAME}"
+DERIVS_DIR="${STAGING}/derivatives/${DATASET_NAME}"
 OUTPUT_DIR="fmriprep-${fmriprep_ver}"
 
 mkdir -p ${DERIVS_DIR}/freesurfer-6.0.1
@@ -56,8 +67,8 @@ fi
 
 # Create tasks file
 rm -f $LAUNCHER_JOB_FILE
-tail --lines=+2 $BIDS_DIR/participants.tsv | while read line
-do
+sed -n "${START_LINE},${STOP_LINE}p" $BIDS_DIR/participants.tsv |
+while read line || [ -n "$line" ]; do
     subject=$( echo $line | cut -d' ' -f1 | cut -d'-' -f2 )
     if [ -d ${DERIVS_DIR}/${OUTPUT_DIR}/freesurfer/sub-$subject ]; then
         find ${DERIVS_DIR}/${OUTPUT_DIR}/freesurfer/sub-$subject -name "*IsRunning*" -delete
