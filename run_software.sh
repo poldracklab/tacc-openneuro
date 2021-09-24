@@ -50,6 +50,9 @@ create_derivatives_ds () {
       git clone https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
       mkdir sourcedata
       datalad clone -d . "$raw_path" sourcedata/raw --reckless ephemeral
+	  
+	  cp code/tacc-openneuro/gitattributes_openneuro.txt .gitattributes
+	  cp code/tacc-openneuro/gitattributes_datalad_openneuro.txt .datalad/.gitattributes
 
       if [[ "$software" == "fmriprep" ]]; then
         # Create freesurfer dataset
@@ -61,6 +64,9 @@ create_derivatives_ds () {
         git clone https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
         mkdir sourcedata
         datalad clone -d . https://github.com/OpenNeuroDatasets/"${raw_ds}".git sourcedata/"$raw_ds"
+		
+  	    cp code/tacc-openneuro/gitattributes_openneuro.txt .gitattributes
+  	    cp code/tacc-openneuro/gitattributes_datalad_openneuro.txt .datalad/.gitattributes
       fi
 	  
       # Ensure permissions for the group
