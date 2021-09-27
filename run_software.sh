@@ -107,7 +107,7 @@ run_software () {
     fi
 	
 	# Remove old work dirs
-	for sub in "$all_subs"; do
+	for sub in $all_subs; do
       rm -rf "$work_dir/${raw_ds}_sub-$sub"
     done
 	
