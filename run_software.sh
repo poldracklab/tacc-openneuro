@@ -118,10 +118,16 @@ run_software () {
 			sub_list=$(echo "$line" | sed 's/ /,/g')
 			processes=$(echo "$line" | awk '{ print NF }')
 			nodes=$(( ($processes + $subs_per_node - 1) / $subs_per_node)) # round up
+			if [ "$nodes" -gt 2 ]; then
+				queue="normal"
+			else
+				queue="small"
+			fi
+			
 			echo reproman run -r local --sub slurm --orc datalad-no-remote \
 				--bp sub="$sub_list" --input "sourcedata/raw/sub-{p[sub]}" --output . \
 					--jp num_processes="$processes" --jp num_nodes="$nodes" \
-						--jp walltime="$walltime" --jp queue=normal --jp launcher=true \
+						--jp walltime="$walltime" --jp queue="$queue" --jp launcher=true \
 							--jp "container=code/containers/bids-${software}" sourcedata/raw \
 								"$derivatives_path" participant --participant-label '{p[sub]}' \
 									-w "$work_dir/${raw_ds}_sub-{p[sub]}" -vv "$command"
