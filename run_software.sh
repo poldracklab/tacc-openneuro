@@ -63,7 +63,7 @@ create_derivatives_ds () {
 				datalad clone -d . ///repronim/containers code/containers
 				git clone https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
 				mkdir sourcedata
-				datalad clone -d . https://github.com/OpenNeuroDatasets/"${raw_ds}".git sourcedata/"$raw_ds"
+				datalad clone -d . https://github.com/OpenNeuroDatasets/"${raw_ds}".git sourcedata/raw
 		
 				cp code/tacc-openneuro/gitattributes_openneuro.txt .gitattributes
 				cp code/tacc-openneuro/gitattributes_datalad_openneuro.txt .datalad/.gitattributes
