@@ -90,12 +90,14 @@ run_software () {
 	
 		if [[ "$software" == "fmriprep" ]]; then
 			walltime="48:00:00"
+			killjob_factors=".75,.15"
 			command="--output-spaces MNI152NLin2009cAsym:res-2 anat func fsaverage5 --nthreads 14 \
 				--omp-nthreads 7 --skip-bids-validation --notrack --fs-license-file $fs_license \
 					--use-aroma --ignore slicetiming --output-layout bids --cifti-output --resource-monitor \
 						--skull-strip-t1w $skull_strip $syn_sdc --mem_mb 38400 --bids-database-dir /tmp" 
 		elif [[ "$software" == "mriqc" ]]; then
 			walltime="8:00:00"
+			killjob_factors=".85,.15"
 			command="--nprocs 11 --ants-nthreads 8 --verbose-reports --dsname $raw_ds --ica --mem_gb 38"
 		fi
 	
@@ -128,9 +130,10 @@ run_software () {
 				--bp sub="$sub_list" --input "sourcedata/raw/sub-{p[sub]}" --output . \
 					--jp num_processes="$processes" --jp num_nodes="$nodes" \
 						--jp walltime="$walltime" --jp queue="$queue" --jp launcher=true \
-							--jp "container=code/containers/bids-${software}" sourcedata/raw \
-								"$derivatives_path" participant --participant-label '{p[sub]}' \
-									-w "$work_dir/${raw_ds}_sub-{p[sub]}" -vv "$command"
+							--jp "container=code/containers/bids-${software}" --jp \
+								killjob_factors="$killjob_factors" sourcedata/raw \
+									"$derivatives_path" participant --participant-label '{p[sub]}' \
+										-w "$work_dir/${raw_ds}_sub-{p[sub]}" -vv "$command"
 			echo
 		done
 	done
