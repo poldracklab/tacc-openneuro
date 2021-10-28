@@ -127,7 +127,7 @@ run_software () {
 			fi
 			
 			echo reproman run -r local --sub slurm --orc datalad-no-remote \
-				--bp sub="$sub_list" --input "sourcedata/raw/sub-{p[sub]}" --output . \
+				--bp sub="$sub_list" --output . \
 					--jp num_processes="$processes" --jp num_nodes="$nodes" \
 						--jp walltime="$walltime" --jp queue="$queue" --jp launcher=true \
 							--jp "container=code/containers/bids-${software}" --jp \
