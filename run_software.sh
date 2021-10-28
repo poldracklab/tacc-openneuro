@@ -148,6 +148,7 @@ syn_sdc="--use-syn-sdc"
 skull_strip="force"
 all_subs_arg=""
 skip_raw_download="False"
+skip_create_derivatives="False"
 STAGING="$SCRATCH/openneuro_derivatives"
 OPENNEURO="/corral-repl/utexas/poldracklab/data/OpenNeuro/"
 work_dir="$SCRATCH/work_dir/$software/" # will probably move this to /temp or something on frontera
@@ -168,6 +169,8 @@ while [[ "$#" > 1 ]]; do
 		subs_per_node=$2; shift ;;
 	--skip-raw-download)
 		skip_raw_download="True" ;;
+	--skip-create-derivatives)
+		skip_create_derivatives="True" ;;
   esac
   shift
 done
@@ -178,5 +181,7 @@ done
 if [[ "$skip_raw_download" == "False" ]]; then
 	download_raw_ds
 fi
-create_derivatives_ds
+if [[ "$skip_create_derivatives" == "False" ]]; then
+	create_derivatives_ds
+fi
 run_software
