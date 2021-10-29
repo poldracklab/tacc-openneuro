@@ -91,14 +91,22 @@ run_software () {
 		if [[ "$software" == "fmriprep" ]]; then
 			walltime="48:00:00"
 			killjob_factors=".75,.15"
+			if [ -z "$subs_per_node" ]; then
+				subs_per_node=4
+			fi
+			mem_mb="$(( 150000 / $subs_per_node ))"
 			command="--output-spaces MNI152NLin2009cAsym:res-2 anat func fsaverage5 --nthreads 14 \
 				--omp-nthreads 7 --skip-bids-validation --notrack --fs-license-file $fs_license \
 					--use-aroma --ignore slicetiming --output-layout bids --cifti-output --resource-monitor \
-						--skull-strip-t1w $skull_strip $syn_sdc --mem_mb 38400 --bids-database-dir /tmp" 
+						--skull-strip-t1w $skull_strip $syn_sdc --mem_mb "$mem_mb" --bids-database-dir /tmp" 
 		elif [[ "$software" == "mriqc" ]]; then
 			walltime="8:00:00"
 			killjob_factors=".85,.15"
-			command="--nprocs 11 --ants-nthreads 8 --verbose-reports --dsname $raw_ds --ica --mem_gb 38"
+			if [ -z "$subs_per_node" ]; then
+				subs_per_node=5
+			fi
+			mem_mb="$(( 150 / $subs_per_node ))"
+			command="--nprocs 11 --ants-nthreads 8 --verbose-reports --dsname $raw_ds --ica --mem_gb "$mem_mb" "
 		fi
 	
 		if [ -z "$all_subs_arg" ]; then
@@ -106,7 +114,7 @@ run_software () {
 		else
 			all_subs=$(echo "$all_subs_arg" | sed 's/,/\n/g')
 		fi
-
+		
 		# Remove old work dirs
 		for sub in $all_subs; do
 			rm -rf "$work_dir/${raw_ds}_sub-$sub"
@@ -126,7 +134,7 @@ run_software () {
 				queue="small"
 			fi
 			
-			echo reproman run -r local --sub slurm --orc datalad-no-remote \
+			reproman run -r local --sub slurm --orc datalad-no-remote \
 				--bp sub="$sub_list" --output . \
 					--jp num_processes="$processes" --jp num_nodes="$nodes" \
 						--jp walltime="$walltime" --jp queue="$queue" --jp launcher=true \
@@ -142,16 +150,16 @@ run_software () {
 # initialize variables
 software="$1"
 ds_list="$2"
-subs_per_job=16
-subs_per_node=4
 syn_sdc="--use-syn-sdc"
 skull_strip="force"
+subs_per_job"200"
 all_subs_arg=""
+subs_per_node""
 skip_raw_download="False"
 skip_create_derivatives="False"
 STAGING="$SCRATCH/openneuro_derivatives"
 OPENNEURO="/corral-repl/utexas/poldracklab/data/OpenNeuro/"
-work_dir="$SCRATCH/work_dir/$software/" # will probably move this to /temp or something on frontera
+work_dir="$SCRATCH/work_dir/$software/"
 fs_license=$HOME/.freesurfer.txt # this should be in code/license
 
 # initialize flags
