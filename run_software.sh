@@ -152,11 +152,12 @@ software="$1"
 ds_list="$2"
 syn_sdc="--use-syn-sdc"
 skull_strip="force"
-subs_per_job"200"
+subs_per_job="200"
 all_subs_arg=""
-subs_per_node""
+subs_per_node=""
 skip_raw_download="False"
 skip_create_derivatives="False"
+skip_run_software="False"
 STAGING="$SCRATCH/openneuro_derivatives"
 OPENNEURO="/corral-repl/utexas/poldracklab/data/OpenNeuro/"
 work_dir="$SCRATCH/work_dir/$software/"
@@ -179,6 +180,8 @@ while [[ "$#" > 1 ]]; do
 		skip_raw_download="True" ;;
 	--skip-create-derivatives)
 		skip_create_derivatives="True" ;;
+	--skip-run-software)
+		skip_run_software="True" ;;
   esac
   shift
 done
@@ -192,4 +195,7 @@ fi
 if [[ "$skip_create_derivatives" == "False" ]]; then
 	create_derivatives_ds
 fi
-run_software
+if [[ "$skip_run_software" == "False" ]]; then
+	run_software
+fi
+
