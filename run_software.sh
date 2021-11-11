@@ -5,7 +5,7 @@
 
 # Clone/update raw datasets and download necessary data for freesurfer/fmriprep/mriqc
 download_raw_ds () {
-	cat $ds_list | while read raw_ds || [ -n "$line" ]; do
+	echo "$dataset_list" | while read raw_ds || [ -n "$line" ]; do
 		raw_path="$STAGING/raw/$raw_ds"
 
 		if [[ ! -d "$raw_path" ]]; then
@@ -38,7 +38,7 @@ download_raw_ds () {
 
 # Create derivatives dataset if necessary
 create_derivatives_ds () {
-	cat $ds_list | while read raw_ds || [ -n "$line" ]; do
+	echo "$dataset_list" | while read raw_ds || [ -n "$line" ]; do
 		derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 		raw_path="$STAGING/raw/$raw_ds"
 
@@ -83,7 +83,7 @@ create_derivatives_ds () {
 
 # Run fmriprep or mriqc
 run_software () {
-	cat $ds_list | while read raw_ds || [ -n "$line" ]; do  
+	echo "$dataset_list" | while read raw_ds || [ -n "$line" ]; do  
 		derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}" 
 		raw_path="$STAGING/raw/$raw_ds"
 		cd "$derivatives_path"
@@ -95,10 +95,10 @@ run_software () {
 				subs_per_node=4
 			fi
 			mem_mb="$(( 150000 / $subs_per_node ))"
-			command="--output-spaces MNI152NLin2009cAsym:res-2 anat func fsaverage5 --nthreads 14 \
-				--omp-nthreads 7 --skip-bids-validation --notrack --fs-license-file $fs_license \
-					--use-aroma --ignore slicetiming --output-layout bids --cifti-output --resource-monitor \
-						--skull-strip-t1w $skull_strip $syn_sdc --mem_mb "$mem_mb" --bids-database-dir /tmp" 
+			command=("--output-spaces" "MNI152NLin2009cAsym:res-2" "anat" "func" "fsaverage5" "--nthreads" "14" \
+				"--omp-nthreads" "7" "--skip-bids-validation" "--notrack" "--fs-license-file" "$fs_license" \
+					"--use-aroma" "--ignore slicetiming" "--output-layout" "bids" "--cifti-output" "--resource-monitor" \
+						"--skull-strip-t1w" "$skull_strip" "$syn_sdc" "--mem_mb" "$mem_mb" "--bids-database-dir" "/tmp")
 		elif [[ "$software" == "mriqc" ]]; then
 			walltime="8:00:00"
 			killjob_factors=".85,.15"
@@ -106,7 +106,7 @@ run_software () {
 				subs_per_node=5
 			fi
 			mem_mb="$(( 150 / $subs_per_node ))"
-			command="--nprocs 11 --ants-nthreads 8 --verbose-reports --dsname $raw_ds --ica --mem_gb "$mem_mb" "
+			command="--nprocs 11 --ants-nthreads 8 --verbose-reports --dsname $raw_ds --ica --mem_gb $mem_mb "
 		fi
 	
 		if [ -z "$all_subs_arg" ]; then
@@ -141,7 +141,7 @@ run_software () {
 							--jp "container=code/containers/bids-${software}" --jp \
 								killjob_factors="$killjob_factors" sourcedata/raw \
 									"$derivatives_path" participant --participant-label '{p[sub]}' \
-										-w "$work_dir/${raw_ds}_sub-{p[sub]}" -vv "$command"
+										-w "$work_dir/${raw_ds}_sub-{p[sub]}" -vv "${command[@]}"
 			echo
 		done
 	done
@@ -149,7 +149,6 @@ run_software () {
 
 # initialize variables
 software="$1"
-ds_list="$2"
 syn_sdc="--use-syn-sdc"
 skull_strip="force"
 subs_per_job="200"
@@ -170,12 +169,16 @@ while [[ "$#" > 1 ]]; do
 		syn_sdc="" ;;
 	--skull-strip-t1w)
 		ss_force=$2; shift ;;
-	--sub_list)
+	--sub-list)
 		all_subs_arg=$2; shift ;;
-	--subs_per_job)
+	--subs-per-job)
 		subs_per_job=$2; shift ;;
-	--subs_per_node)
+	--subs-per-node)
 		subs_per_node=$2; shift ;;
+	--dataset-list)
+		dataset_list=$(cat $2); shift ;;
+	--dataset)
+		dataset_list=$2; shift ;;
 	--skip-raw-download)
 		skip_raw_download="True" ;;
 	--skip-create-derivatives)
