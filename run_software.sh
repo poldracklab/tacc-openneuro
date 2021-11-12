@@ -97,7 +97,7 @@ run_software () {
 			mem_mb="$(( 150000 / $subs_per_node ))"
 			command=("--output-spaces" "MNI152NLin2009cAsym:res-2" "anat" "func" "fsaverage5" "--nthreads" "14" \
 				"--omp-nthreads" "7" "--skip-bids-validation" "--notrack" "--fs-license-file" "$fs_license" \
-					"--use-aroma" "--ignore slicetiming" "--output-layout" "bids" "--cifti-output" "--resource-monitor" \
+					"--use-aroma" "--ignore" "slicetiming" "--output-layout" "bids" "--cifti-output" "--resource-monitor" \
 						"--skull-strip-t1w" "$skull_strip" "$syn_sdc" "--mem_mb" "$mem_mb" "--bids-database-dir" "/tmp")
 		elif [[ "$software" == "mriqc" ]]; then
 			walltime="8:00:00"
