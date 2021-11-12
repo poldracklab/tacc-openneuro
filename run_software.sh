@@ -116,9 +116,11 @@ run_software () {
 		fi
 		
 		# Remove old work dirs
-		for sub in $all_subs; do
-			rm -rf "$work_dir/${raw_ds}_sub-$sub"
-		done
+		if [[ "$skip_workdir_delete" == "False" ]]; then
+			for sub in $all_subs; do
+				rm -rf "$work_dir/${raw_ds}_sub-$sub"
+			done
+		fi
 
 		datalad save -r
 
@@ -157,6 +159,7 @@ subs_per_node=""
 skip_raw_download="False"
 skip_create_derivatives="False"
 skip_run_software="False"
+skip_workdir_delete="False"
 STAGING="$SCRATCH/openneuro_derivatives"
 OPENNEURO="/corral-repl/utexas/poldracklab/data/OpenNeuro/"
 work_dir="$SCRATCH/work_dir/$software/"
@@ -185,6 +188,8 @@ while [[ "$#" > 1 ]]; do
 		skip_create_derivatives="True" ;;
 	--skip-run-software)
 		skip_run_software="True" ;;
+	--skip-workdir-delete)
+		skip_workdir_delete="True" ;;
   esac
   shift
 done
