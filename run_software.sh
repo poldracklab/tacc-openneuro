@@ -106,7 +106,7 @@ run_software () {
 				subs_per_node=5
 			fi
 			mem_mb="$(( 150 / $subs_per_node ))"
-			command="--nprocs 11 --ants-nthreads 8 --verbose-reports --dsname $raw_ds --ica --mem_gb $mem_mb "
+			command=("--nprocs" "11" "--ants-nthreads" "8" "--verbose-reports" "--dsname" "$raw_ds" "--ica" "--mem_gb" "$mem_mb")
 		fi
 	
 		if [ -z "$all_subs_arg" ]; then
