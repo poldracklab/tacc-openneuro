@@ -149,6 +149,22 @@ run_software () {
 	done
 }
 
+clone_derivatives () {
+	echo "$dataset_list" | while read raw_ds || [ -n "$line" ]; do  
+		derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
+		derivatives_path_corral="$OPENNEURO/$software/${raw_ds}-${software}"
+		datalad clone "$derivatives_path" "$derivatives_path_corral"
+		cd "$derivatives_path_corral/$ds"
+		datalad get sub* -r
+		git config --file .gitmodules --replace-all submodule.code/containers.url https://github.com/ReproNim/containers.git
+		git config --file .gitmodules --unset-all submodule.code/containers.datalad-url https://github.com/ReproNim/containers.git
+		git config --file .gitmodules --replace-all submodule.sourcedata/raw.url https://github.com/OpenNeuroDatasets/"$raw_ds".git
+		git config --file .gitmodules --unset-all submodule.sourcedata/raw.datalad-url https://github.com/OpenNeuroDatasets/"$raw_ds".git
+		datalad install . -r
+	done
+}
+
+
 # initialize variables
 software="$1"
 syn_sdc="--use-syn-sdc"
@@ -160,13 +176,14 @@ skip_raw_download="False"
 skip_create_derivatives="False"
 skip_run_software="False"
 skip_workdir_delete="False"
+download_create_run="True"
 STAGING="$SCRATCH/openneuro_derivatives"
 OPENNEURO="/corral-repl/utexas/poldracklab/data/OpenNeuro/"
 work_dir="$SCRATCH/work_dir/$software/"
 fs_license=$HOME/.freesurfer.txt # this should be in code/license
 
 # initialize flags
-while [[ "$#" > 1 ]]; do
+while [[ "$#" > 0 ]]; do
   case $1 in
 	--no-syn-sdc)
 		syn_sdc="" ;;
@@ -190,6 +207,9 @@ while [[ "$#" > 1 ]]; do
 		skip_run_software="True" ;;
 	--skip-workdir-delete)
 		skip_workdir_delete="True" ;;
+	--clone)
+		clone_derivatives="True"
+		download_create_run="False" ;;
   esac
   shift
 done
@@ -197,13 +217,17 @@ done
 
 # run full pipeline
 # todo: figure out how to run two reproman jobs simultaneously
-if [[ "$skip_raw_download" == "False" ]]; then
-	download_raw_ds
+if [[ "download_create_run" == "True" ]]; then
+	if [[ "$skip_raw_download" == "False" ]]; then
+		download_raw_ds
+	fi
+	if [[ "$skip_create_derivatives" == "False" ]]; then
+		create_derivatives_ds
+	fi
+	if [[ "$skip_run_software" == "False" ]]; then
+		run_software
+	fi
+elif [[ "$clone_derivatives" == "True" ]]; then
+	clone_derivatives
 fi
-if [[ "$skip_create_derivatives" == "False" ]]; then
-	create_derivatives_ds
-fi
-if [[ "$skip_run_software" == "False" ]]; then
-	run_software
-fi
-
+	
