@@ -46,6 +46,7 @@ create_derivatives_ds () {
 		if [[ ! -d "$derivatives_path" ]]; then
 			datalad create -c yoda "$derivatives_path"
 			cd "$derivatives_path"
+			rm CHANGELOG.md README.md code/README.md
 			datalad clone -d . "$STAGING/containers" code/containers --reckless ephemeral
 			git clone https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
 			mkdir sourcedata
