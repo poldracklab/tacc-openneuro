@@ -61,18 +61,11 @@ create_derivatives_ds () {
 			cp code/tacc-openneuro/gitattributes_datalad_openneuro.txt .datalad/.gitattributes
 
 			if [[ "$software" == "fmriprep" ]]; then
-				# Create freesurfer dataset
-				# todo: look for existing freesurfer derivatives. don't need to alter fmriprep command because it will already look in fs dir
-				fs_path="$derivatives_path/sourcedata/freesurfer"
-				datalad create -c yoda "$fs_path"
-				cd "$fs_path"
-				datalad clone -d . ///repronim/containers code/containers
-				git clone https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
-				mkdir sourcedata
-				datalad clone -d . https://github.com/OpenNeuroDatasets/"${raw_ds}".git sourcedata/raw
-		
-				cp code/tacc-openneuro/gitattributes_openneuro.txt .gitattributes
-				cp code/tacc-openneuro/gitattributes_datalad_openneuro.txt .datalad/.gitattributes
+				# Look for existing freesurfer derivatives
+				fs_path="$OPENNEURO/freesurfer/${raw_ds}-freesurfer"
+				if [[ -d "$fs_path" ]]; then
+					rsync -tvrL "$fs_path/" "$derivatives_path/sourcedata/freesurfer/"
+				fi
 			fi
 	  
 			# Ensure permissions for the group
