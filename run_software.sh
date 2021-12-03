@@ -183,7 +183,7 @@ clone_derivatives () {
 software="$1"
 syn_sdc="--use-syn-sdc"
 skull_strip="force"
-subs_per_job="200"
+subs_per_job="100"
 all_subs_arg=""
 subs_per_node=""
 skip_raw_download="False"
