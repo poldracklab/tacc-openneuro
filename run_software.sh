@@ -132,7 +132,15 @@ run_software () {
 
 		# Submit jobs via reproman in batches 
 		# make sure to 'unlock' outputs
+		count=0
 		echo "$all_subs" | xargs -n "$subs_per_job" echo | while read line; do 
+			((count++))
+			if [ -n "$part" ]; then
+				if [ "$part" != "$count" ]; then
+					continue
+				fi
+			fi	
+				
 			sub_list=$(echo "$line" | sed 's/ /,/g')
 			processes=$(echo "$line" | awk '{ print NF }')
 			nodes=$(( ($processes + $subs_per_node - 1) / $subs_per_node)) # round up
@@ -216,6 +224,8 @@ while [[ "$#" > 0 ]]; do
 	--clone)
 		clone_derivatives="True"
 		download_create_run="False" ;;
+	--part)
+		part=$2; shift ;;
   esac
   shift
 done
