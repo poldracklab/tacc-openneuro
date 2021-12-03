@@ -147,10 +147,11 @@ run_software () {
 				--bp sub="$sub_list" --output . \
 					--jp num_processes="$processes" --jp num_nodes="$nodes" \
 						--jp walltime="$walltime" --jp queue="$queue" --jp launcher=true \
-							--jp "container=code/containers/bids-${software}" --jp \
-								killjob_factors="$killjob_factors" sourcedata/raw \
-									"$derivatives_path" participant --participant-label '{p[sub]}' \
-										-w "$work_dir/${raw_ds}_sub-{p[sub]}" -vv "${command[@]}"
+							--jp job_name="${raw_ds}-${software}" --jp mail_type=END --jp mail_user="$user_email" \
+								--jp "container=code/containers/bids-${software}" --jp \
+									killjob_factors="$killjob_factors" sourcedata/raw \
+										"$derivatives_path" participant --participant-label '{p[sub]}' \
+											-w "$work_dir/${raw_ds}_sub-{p[sub]}" -vv "${command[@]}"
 			echo
 		done
 	done
@@ -173,6 +174,7 @@ clone_derivatives () {
 
 
 # initialize variables
+user_email="jbwexler@tutanota.com"
 software="$1"
 syn_sdc="--use-syn-sdc"
 skull_strip="force"
