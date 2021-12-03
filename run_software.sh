@@ -7,7 +7,12 @@
 download_raw_ds () {
 	echo "$dataset_list" | while read raw_ds || [ -n "$line" ]; do
 		raw_path="$STAGING/raw/$raw_ds"
-
+		
+		if [[ -d "$raw_path" ]] && [[ ! -f "$raw_path/dataset_description.json" ]]; then
+			# Delete datasets on $SCRATCH that have been purged by TACC
+			rm -rf "$raw_path"
+		fi
+		
 		if [[ ! -d "$raw_path" ]]; then
 			datalad clone https://github.com/OpenNeuroDatasets/${raw_ds}.git "$raw_path"
 
@@ -218,7 +223,7 @@ done
 
 # run full pipeline
 # todo: figure out how to run two reproman jobs simultaneously
-if [[ "download_create_run" == "True" ]]; then
+if [[ "$download_create_run" == "True" ]]; then
 	if [[ "$skip_raw_download" == "False" ]]; then
 		download_raw_ds
 	fi
