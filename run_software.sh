@@ -5,7 +5,7 @@
 
 # Clone/update raw datasets and download necessary data for freesurfer/fmriprep/mriqc
 download_raw_ds () {
-	echo "$dataset_list" | while read raw_ds || [ -n "$line" ]; do
+	while IFS= read -r raw_ds; do  
 		raw_path="$STAGING/raw/$raw_ds"
 		
 		if [[ -d "$raw_path" ]] && [[ ! -f "$raw_path/dataset_description.json" ]]; then
@@ -38,12 +38,12 @@ download_raw_ds () {
 			find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
 				-exec datalad get {} +
 		fi
-	done
+	done <<< "$dataset_list"
 }
 
 # Create derivatives dataset if necessary
 create_derivatives_ds () {
-	echo "$dataset_list" | while read raw_ds || [ -n "$line" ]; do
+	while IFS= read -r raw_ds; do  
 		derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 		raw_path="$STAGING/raw/$raw_ds"
 
@@ -77,12 +77,12 @@ create_derivatives_ds () {
 			datalad update --merge -d "$derivatives_path/code/containers"
 			datalad update --merge -d "$derivatives_path/code/tacc-openneuro"	  
 		fi
-	done
+	done <<< "$dataset_list"
 }
 
 # Run fmriprep or mriqc
 run_software () {
-	echo "$dataset_list" | while read raw_ds || [ -n "$line" ]; do  
+	while IFS= read -r raw_ds; do  
 		derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}" 
 		raw_path="$STAGING/raw/$raw_ds"
 		cd "$derivatives_path"
@@ -154,13 +154,46 @@ run_software () {
 											-w "$work_dir/${raw_ds}_sub-{p[sub]}" -vv "${command[@]}"
 			echo
 		done
-	done
+	done <<< "$dataset_list"
 }
 
 clone_derivatives () {
-	echo "$dataset_list" | while read raw_ds || [ -n "$line" ]; do  
+	success_array=()
+	while IFS= read -r raw_ds; do  
 		derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 		derivatives_path_corral="$OPENNEURO/$software/${raw_ds}-${software}"
+		
+		reproman_logs="$derivatives_path/.reproman/jobs/local/$(ls -1 $derivatives_path/.reproman/jobs/local/ | tail -n 1)"
+		fail="False"
+		for f in "$reproman_logs"/status.*; do
+			status="$(cat $f)"
+			if [[ "$status" != "succeeded" ]]; then
+				echo "$f failed"
+				fail="True"
+			fi
+		done
+		if [[ "$software" == "mriqc" ]]; then
+			success_phrase="MRIQC completed"
+		elif [[ "$software" == "fmriprep" ]]; then
+			success_phrase="fMRIPrep finished successfully"
+		fi
+		for f in "$reproman_logs"/stdout.*; do
+			if [[ "$(tail -n 10 $f)" != *"$success_phrase"* ]]; then
+				echo "$f failed"
+				fail="True"
+			fi
+		done
+		
+		if [[ "$fail" == "True" ]]; then
+			success_array+=("${raw_ds}: failure")
+			continue
+		else
+			success_array+=("${raw_ds}: success")
+		fi		
+		
+		mv "$derivatives_path"/remora* "$OPENNEURO/logs/remora/${raw_ds}-${software}-remora"
+		datalad save -r -d "$derivatives_path"
+		
 		datalad clone "$derivatives_path" "$derivatives_path_corral"
 		cd "$derivatives_path_corral/$ds"
 		datalad get sub* -r
@@ -169,7 +202,14 @@ clone_derivatives () {
 		git config --file .gitmodules --replace-all submodule.sourcedata/raw.url https://github.com/OpenNeuroDatasets/"$raw_ds".git
 		git config --file .gitmodules --unset-all submodule.sourcedata/raw.datalad-url https://github.com/OpenNeuroDatasets/"$raw_ds".git
 		datalad install . -r
-	done
+		
+		derivatives_path_old="$STAGING/derivatives/$software/old/${raw_ds}-${software}"
+		datalad remove -d "$derivatives_path_old" --nocheck -r
+		rm -rf "$derivatives_path_old"
+		mv -f "$derivatives_path" "$derivatives_path_old"
+	done <<< "$dataset_list"
+	echo
+	printf "%s\n" "${success_array[@]}"
 }
 
 
