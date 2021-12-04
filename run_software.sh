@@ -183,9 +183,11 @@ clone_derivatives () {
 		done
 		
 		if [[ "$fail" == "True" ]]; then
-			success_array+=("${raw_ds}: failure")
-			continue
-		else
+			success_array+=("${raw_ds}: failed")
+			if [[ "$ignore" != "True" ]]; then
+				continue
+			fi
+		else	
 			success_array+=("${raw_ds}: success")
 		fi		
 		
@@ -257,6 +259,8 @@ while [[ "$#" > 0 ]]; do
 	--clone)
 		clone_derivatives="True"
 		download_create_run="False" ;;
+	--ignore)
+		ignore="True" ;;
 	--part)
 		part=$2; shift ;;
   esac
