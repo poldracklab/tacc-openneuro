@@ -191,6 +191,10 @@ clone_derivatives () {
 			success_array+=("${raw_ds}: success")
 		fi		
 		
+		if [[ "$check" == "True" ]]; then
+			continue
+		fi
+		
 		mv "$derivatives_path"/remora* "$OPENNEURO/logs/remora/${raw_ds}-${software}-remora"
 		datalad save -r -d "$derivatives_path"
 		
@@ -261,6 +265,10 @@ while [[ "$#" > 0 ]]; do
 		download_create_run="False" ;;
 	--ignore)
 		ignore="True" ;;
+	--check)
+		check="True"
+		clone_derivatives="True"
+		download_create_run="False" ;;
 	--part)
 		part=$2; shift ;;
   esac
