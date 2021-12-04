@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Treat unset variables as an error; Exit immediately if a command exits with a non-zero status
-#set -u -e
 
 # Clone/update raw datasets and download necessary data for freesurfer/fmriprep/mriqc
 download_raw_ds () {
@@ -265,6 +263,10 @@ while [[ "$#" > 0 ]]; do
   shift
 done
 
+if [ -z "$dataset_list" ]; then
+	echo "No datasets list provided"
+	exit 1
+fi
 
 # run full pipeline
 # todo: figure out how to run two reproman jobs simultaneously
