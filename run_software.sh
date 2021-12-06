@@ -1,7 +1,6 @@
 #!/bin/bash
 
-
-# Clone/update raw datasets and download necessary data for freesurfer/fmriprep/mriqc
+# Clone/update raw datasets and download necessary data for fmriprep/mriqc
 download_raw_ds () {
 	while IFS= read -r raw_ds; do  
 		raw_path="$STAGING/raw/$raw_ds"
@@ -45,7 +44,7 @@ create_derivatives_ds () {
 		derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 		raw_path="$STAGING/raw/$raw_ds"
 
-		# To-do: fix reckless clones so they link to original URL; add line to download licenses; fix reckless clone issue when original dataset doesn't download properly 
+		# to-do: fix reckless clone issue when original dataset doesn't download properly 
 		if [[ ! -d "$derivatives_path" ]]; then
 			datalad create -c yoda "$derivatives_path"
 			cd "$derivatives_path"
@@ -126,12 +125,11 @@ run_software () {
 		count=0
 		echo "$all_subs" | xargs -n "$subs_per_job" echo | while read line; do 
 			((count++))
-			if [ -n "$part" ]; then
-				if [ "$part" != "$count" ]; then
-					continue
-				fi
-			fi	
-				
+
+			if [ "$part" != "$count" ]; then
+				continue
+			fi
+
 			sub_list=$(echo "$line" | sed 's/ /,/g')
 			processes=$(echo "$line" | awk '{ print NF }')
 			nodes=$(( ($processes + $subs_per_node - 1) / $subs_per_node)) # round up
@@ -230,6 +228,7 @@ skip_create_derivatives="False"
 skip_run_software="False"
 skip_workdir_delete="False"
 download_create_run="True"
+part="1"
 STAGING="$SCRATCH/openneuro_derivatives"
 OPENNEURO="/corral-repl/utexas/poldracklab/data/OpenNeuro/"
 work_dir="$SCRATCH/work_dir/$software/"
@@ -281,7 +280,6 @@ if [ -z "$dataset_list" ]; then
 fi
 
 # run full pipeline
-# todo: figure out how to run two reproman jobs simultaneously
 if [[ "$download_create_run" == "True" ]]; then
 	if [[ "$skip_raw_download" == "False" ]]; then
 		download_raw_ds
