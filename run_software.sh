@@ -169,7 +169,7 @@ clone_derivatives () {
 		fi
 		reproman_logs="$(ls -1d $derivatives_path/.reproman/jobs/local/* | sort -nr)"
 		readarray -t sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort )
-		while IFS= read -r job_dir && [ ${#sub_array[@]} > 0 ]; do		
+		while IFS= read -r job_dir && [ ${#sub_array[@]} -gt 0 ]; do		
 			echo "$job_dir"
 			for stdout in "$job_dir"/stdout.*; do
 				sub=$(head -n 10 "$stdout" | grep "\-\-participant-label" | sed -r 's/.*--participant-label \x27([^\x27]*)\x27.*/\1/g'01)
@@ -194,13 +194,13 @@ clone_derivatives () {
 		readarray -t raw_sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
 		readarray -t derivatives_sub_array < <(find "$derivatives_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
 		unique_array=($(comm -3 <(printf "%s\n" "${raw_sub_array[@]}" | sort) <(printf "%s\n" "${derivatives_sub_array[@]}" | sort) | sort -n)) # print unique elements
-		if [ ${#unique_array[@]} > 0 ]; then
+		if [ ${#unique_array[@]} -gt 0 ]; then
 			fail="True"
 			echo "The following subjects dirs do not exist: "
 			echo "${unique_array[@]}"
 		fi
 		
-		if [ ${#sub_array[@]} > 0 ]; then
+		if [ ${#sub_array[@]} -gt 0 ]; then
 			fail="True"
 			echo "The following subjects have not been run: "
 			echo "${sub_array[@]}"
