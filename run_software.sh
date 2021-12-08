@@ -158,30 +158,56 @@ clone_derivatives () {
 	while IFS= read -r raw_ds; do  
 		derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 		derivatives_path_corral="$OPENNEURO/$software/${raw_ds}-${software}"
+		raw_path="$STAGING/raw/$raw_ds"
 		
-		reproman_logs="$derivatives_path/.reproman/jobs/local/$(ls -1 $derivatives_path/.reproman/jobs/local/ | tail -n 1)"
+		# Check results
 		fail="False"
-		for f in "$reproman_logs"/status.*; do
-			status="$(cat $f)"
-			if [[ "$status" != "succeeded" ]]; then
-				echo "$f failed"
-				fail="True"
-			fi
-		done
 		if [[ "$software" == "mriqc" ]]; then
 			success_phrase="MRIQC completed"
 		elif [[ "$software" == "fmriprep" ]]; then
 			success_phrase="fMRIPrep finished successfully"
 		fi
-		for f in "$reproman_logs"/stdout.*; do
-			if [[ "$(tail -n 10 $f)" != *"$success_phrase"* ]]; then
-				echo "$f failed"
-				fail="True"
-			fi
-		done
+		reproman_logs="$(ls -1d $derivatives_path/.reproman/jobs/local/* | sort -nr)"
+		readarray -t sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort )
+		while IFS= read -r job_dir && [ ${#sub_array[@]} > 0 ]; do		
+			echo "$job_dir"
+			for stdout in "$job_dir"/stdout.*; do
+				sub=$(head -n 10 "$stdout" | grep "\-\-participant-label" | sed -r 's/.*--participant-label \x27([^\x27]*)\x27.*/\1/g'01)
+				# Look for exact match in array
+				if [[ ${sub_array[*]} =~ (^|[[:space:]])"$sub"($|[[:space:]]) ]]; then
+					# Remove sub from array
+					for i in "${!sub_array[@]}";do
+						if [[ "${sub_array[$i]}" == "$sub" ]];then 
+							unset 'sub_array[i]'
+							break
+						fi
+					done
+					if [[ "$(tail -n 10 $stdout)" != *"$success_phrase"* ]]; then
+						echo "$stdout failed"
+						fail="True"
+					fi
+				fi
+			done
+		done <<< "$reproman_logs"
+		
+		# Check all subject directories exist
+		readarray -t raw_sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
+		readarray -t derivatives_sub_array < <(find "$derivatives_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
+		unique_array=($(comm -3 <(printf "%s\n" "${raw_sub_array[@]}" | sort) <(printf "%s\n" "${derivatives_sub_array[@]}" | sort) | sort -n)) # print unique elements
+		if [ ${#unique_array[@]} > 0 ]; then
+			fail="True"
+			echo "The following subjects dirs do not exist: "
+			echo "${unique_array[@]}"
+		fi
+		
+		if [ ${#sub_array[@]} > 0 ]; then
+			fail="True"
+			echo "The following subjects have not been run: "
+			echo "${sub_array[@]}"
+		fi
 		
 		if [[ "$fail" == "True" ]]; then
-			success_array+=("${raw_ds}: failed")
+			success_array+=("${raw_ds}: fail")
 			if [[ "$ignore" != "True" ]]; then
 				continue
 			fi
@@ -189,12 +215,15 @@ clone_derivatives () {
 			success_array+=("${raw_ds}: success")
 		fi		
 		
+		
 		if [[ "$check" == "True" ]]; then
 			continue
 		fi
 		
-		mv "$derivatives_path"/remora* "$OPENNEURO/logs/remora/${raw_ds}-${software}-remora"
-		datalad save -r -d "$derivatives_path"
+		# Move remora logs to corral
+		datalad unlock "$derivatives_path"/remora*
+		mv "$derivatives_path"/remora* "$OPENNEURO/logs/remora/${raw_ds}-${software}-remora/"
+		datalad save -d "$derivatives_path"
 		
 		datalad clone "$derivatives_path" "$derivatives_path_corral"
 		cd "$derivatives_path_corral/$ds"
@@ -213,7 +242,6 @@ clone_derivatives () {
 	echo
 	printf "%s\n" "${success_array[@]}"
 }
-
 
 # initialize variables
 user_email="jbwexler@tutanota.com"
