@@ -169,6 +169,7 @@ clone_derivatives () {
 		fi
 		reproman_logs="$(ls -1d $derivatives_path/.reproman/jobs/local/* | sort -nr)"
 		readarray -t sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort )
+		failed_array=()
 		while IFS= read -r job_dir && [ ${#sub_array[@]} -gt 0 ]; do		
 			echo "$job_dir"
 			for stdout in "$job_dir"/stdout.*; do
@@ -184,11 +185,18 @@ clone_derivatives () {
 					done
 					if [[ "$(tail -n 10 $stdout)" != *"$success_phrase"* ]]; then
 						echo "$stdout failed"
-						fail="True"
+						failed_array+=("$sub")
 					fi
 				fi
 			done
 		done <<< "$reproman_logs"
+		
+		if [ ${#failed_array[@]} -gt 0 ]; then
+			fail="True"
+			echo "The following subjects failed: "
+			printf -v failed_joined '%s,' "${failed_array[@]}"
+			echo "${failed_joined%,}"
+		fi
 		
 		# Check all subject directories exist
 		readarray -t raw_sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
@@ -197,13 +205,15 @@ clone_derivatives () {
 		if [ ${#unique_array[@]} -gt 0 ]; then
 			fail="True"
 			echo "The following subjects dirs do not exist: "
-			echo "${unique_array[@]}"
+			printf -v unique_joined '%s,' "${unique_array[@]}"
+			echo "${unique_joined%,}"
 		fi
 		
 		if [ ${#sub_array[@]} -gt 0 ]; then
 			fail="True"
 			echo "The following subjects have not been run: "
-			echo "${sub_array[@]}"
+			printf -v sub_joined '%s,' "${sub_array[@]}"
+			echo "${sub_joined%,}"
 		fi
 		
 		if [[ "$fail" == "True" ]]; then
