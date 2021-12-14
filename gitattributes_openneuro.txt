@@ -7,4 +7,5 @@
 *.bval annex.largefiles=largerthan=40kb
 README annex.largefiles=nothing
 CHANGES annex.largefiles=nothing
+dataset_description.json annex.largefiles=nothing
 .bidsignore annex.largefiles=nothing
