@@ -285,10 +285,10 @@ while [[ "$#" > 0 ]]; do
 		subs_per_job=$2; shift ;;
 	--subs-per-node)
 		subs_per_node=$2; shift ;;
-	--dataset-list)
+	--dataset-file)
 		dataset_list=$(cat $2); shift ;;
 	--dataset)
-		dataset_list=$2; shift ;;
+		dataset_list=$(echo $2 | sed 's/,/\n/gi'); shift ;;
 	--skip-raw-download)
 		skip_raw_download="True" ;;
 	--skip-create-derivatives)
