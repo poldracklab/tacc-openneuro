@@ -4,10 +4,13 @@
 download_raw_ds () {
 	while IFS= read -r raw_ds; do  
 		raw_path="$STAGING/raw/$raw_ds"
+		derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 		
-		if [[ -d "$raw_path" ]] && [[ ! -f "$raw_path/dataset_description.json" ]]; then
+		if [[ -d "$raw_path" ]] && [[ ! -f "$raw_path/dataset_description.json" ]] || [[ "$(git -C "$raw_path" fsck)" == *"dangling"* ]]; then
 			# Delete datasets on $SCRATCH that have been purged by TACC
+			chmod -R 775 "$raw_path"
 			rm -rf "$raw_path"
+			datalad remove "$derivatives_path/sourcedata/raw" --nocheck -r
 		fi
 		
 		if [[ ! -d "$raw_path" ]]; then
@@ -30,7 +33,7 @@ download_raw_ds () {
 				-exec datalad get {} +
 		else
 			# Update
-			cd "$raw_path"
+			cd "$raw_path"				
 			datalad update --merge
 			find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
 				-exec datalad get {} +
@@ -70,7 +73,12 @@ create_derivatives_ds () {
 			find "$derivatives_path" -type d | xargs setfacl -R -m d:g:G-802037:rwX
 		else
 			# Update
-			datalad update --merge -d "$derivatives_path/sourcedata/raw"
+			if [[ ! -d "$derivatives_path/sourcedata/raw" ]]; then
+				cd "$derivatives_path"
+				datalad clone -d . "$raw_path" sourcedata/raw --reckless ephemeral
+			else
+				datalad update --merge -d "$derivatives_path/sourcedata/raw"
+			fi
 			datalad update --merge -d "$derivatives_path/code/containers"
 			datalad update --merge -d "$derivatives_path/code/tacc-openneuro"	  
 		fi
