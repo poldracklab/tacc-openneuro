@@ -56,7 +56,7 @@ create_derivatives_ds () {
 			git clone https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
 			mkdir sourcedata
 			datalad clone -d . "$raw_path" sourcedata/raw --reckless ephemeral
-			datalad clone -d . "$STAGING/templateflow" sourcedata/templateflow --reckless ephemeral
+			datalad clone -d . https://github.com/templateflow/templateflow.git sourcedata/templateflow
 	  
 			cp code/tacc-openneuro/gitattributes_openneuro.txt .gitattributes
 			cp code/tacc-openneuro/gitattributes_datalad_openneuro.txt .datalad/.gitattributes
