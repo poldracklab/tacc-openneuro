@@ -56,6 +56,7 @@ create_derivatives_ds () {
 			git clone https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
 			mkdir sourcedata
 			datalad clone -d . "$raw_path" sourcedata/raw --reckless ephemeral
+			datalad clone -d . "$STAGING/templateflow" sourcedata/templateflow --reckless ephemeral
 	  
 			cp code/tacc-openneuro/gitattributes_openneuro.txt .gitattributes
 			cp code/tacc-openneuro/gitattributes_datalad_openneuro.txt .datalad/.gitattributes
@@ -128,6 +129,7 @@ run_software () {
 
 		datalad save -r
 
+		export SINGULARITYENV_TEMPLATEFLOW_HOME=sourcedata/templateflow/
 		# Submit jobs via reproman in batches 
 		# make sure to 'unlock' outputs
 		count=0
@@ -239,22 +241,27 @@ clone_derivatives () {
 		fi
 		
 		# Move remora logs to corral
-		datalad unlock "$derivatives_path"/remora*
-		mv "$derivatives_path"/remora* "$OPENNEURO/logs/remora/${raw_ds}-${software}-remora/"
+		datalad unlock -d "$derivatives_path" "$derivatives_path"/remora*
+		mkdir "$OPENNEURO/logs/$software/remora/${raw_ds}-${software}-remora/"
+		mv "$derivatives_path"/remora* "$OPENNEURO/logs/$software/remora/${raw_ds}-${software}-remora/"
 		datalad save -d "$derivatives_path"
 		
 		datalad clone "$derivatives_path" "$derivatives_path_corral"
 		cd "$derivatives_path_corral/$ds"
-		datalad get sub* -r
+		datalad get .
 		git config --file .gitmodules --replace-all submodule.code/containers.url https://github.com/ReproNim/containers.git
-		git config --file .gitmodules --unset-all submodule.code/containers.datalad-url https://github.com/ReproNim/containers.git
+		git config --file .gitmodules --unset-all submodule.code/containers.datalad-url
 		git config --file .gitmodules --replace-all submodule.sourcedata/raw.url https://github.com/OpenNeuroDatasets/"$raw_ds".git
-		git config --file .gitmodules --unset-all submodule.sourcedata/raw.datalad-url https://github.com/OpenNeuroDatasets/"$raw_ds".git
+		git config --file .gitmodules --unset-all submodule.sourcedata/raw.datalad-url
+		git config --file .gitmodules --unset-all submodule.sourcedata/templateflow.datalad-url
+		datalad save -r
 		datalad install . -r
 		
 		derivatives_path_old="$STAGING/derivatives/$software/old/${raw_ds}-${software}"
-		datalad remove -d "$derivatives_path_old" --nocheck -r
-		rm -rf "$derivatives_path_old"
+		if [[ -d "$derivatives_path_old" ]]; then
+			chmod -R 775 "$derivatives_path_old"
+			rm -rf "$derivatives_path_old"
+		fi
 		mv -f "$derivatives_path" "$derivatives_path_old"
 	done <<< "$dataset_list"
 	echo
@@ -316,6 +323,8 @@ while [[ "$#" > 0 ]]; do
 		download_create_run="False" ;;
 	--part)
 		part=$2; shift ;;
+	-x)
+		set -x; shift ;;
   esac
   shift
 done
