@@ -56,7 +56,7 @@ create_derivatives_ds () {
 			git clone https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
 			mkdir sourcedata
 			datalad clone -d . "$raw_path" sourcedata/raw --reckless ephemeral
-			datalad clone -d . https://github.com/templateflow/templateflow.git sourcedata/templateflow
+			datalad clone -d . "$STAGING/templateflow" sourcedata/templateflow --reckless ephemeral
 	  
 			cp code/tacc-openneuro/gitattributes_openneuro.txt .gitattributes
 			cp code/tacc-openneuro/gitattributes_datalad_openneuro.txt .datalad/.gitattributes
@@ -81,7 +81,9 @@ create_derivatives_ds () {
 				datalad update --merge -d "$derivatives_path/sourcedata/raw"
 			fi
 			datalad update --merge -d "$derivatives_path/code/containers"
-			datalad update --merge -d "$derivatives_path/code/tacc-openneuro"	  
+			datalad update --merge -d "$derivatives_path/code/tacc-openneuro"	
+			datalad update --merge -d "$derivatives_path/sourcedata/templateflow"	  
+			  
 		fi
 	done <<< "$dataset_list"
 }
@@ -103,7 +105,12 @@ run_software () {
 			command=("--output-spaces" "MNI152NLin2009cAsym:res-2" "anat" "func" "fsaverage5" "--nthreads" "14" \
 				"--omp-nthreads" "7" "--skip-bids-validation" "--notrack" "--fs-license-file" "$fs_license" \
 					"--use-aroma" "--ignore" "slicetiming" "--output-layout" "bids" "--cifti-output" "--resource-monitor" \
-						"--skull-strip-t1w" "$skull_strip" "$syn_sdc" "--mem_mb" "$mem_mb" "--bids-database-dir" "/tmp")
+						"--skull-strip-t1w" "$skull_strip" "--mem_mb" "$mem_mb" "--bids-database-dir" "/tmp")
+			if [[ "$syn_sdc" ==  "True" ]]; then
+				command+=("--use-syn-sdc")
+				command+=("warn")
+			fi
+			
 		elif [[ "$software" == "mriqc" ]]; then
 			walltime="8:00:00"
 			killjob_factors=".85,.15"
@@ -129,7 +136,8 @@ run_software () {
 
 		datalad save -r
 
-		export SINGULARITYENV_TEMPLATEFLOW_HOME=sourcedata/templateflow/
+		export SINGULARITYENV_TEMPLATEFLOW_HOME="sourcedata/templateflow/"
+		export SINGULARITYENV_TEMPLATEFLOW_USE_DATALAD="true"
 		# Submit jobs via reproman in batches 
 		# make sure to 'unlock' outputs
 		count=0
@@ -271,7 +279,7 @@ clone_derivatives () {
 # initialize variables
 user_email="jbwexler@tutanota.com"
 software="$1"
-syn_sdc="--use-syn-sdc"
+syn_sdc="True"
 skull_strip="force"
 subs_per_job="100"
 all_subs_arg=""
@@ -291,7 +299,7 @@ fs_license=$HOME/.freesurfer.txt # this should be in code/license
 while [[ "$#" > 0 ]]; do
   case $1 in
 	--no-syn-sdc)
-		syn_sdc="" ;;
+		syn_sdc="False" ;;
 	--skull-strip-t1w)
 		ss_force=$2; shift ;;
 	--sub-list)
@@ -340,6 +348,7 @@ if [[ "$download_create_run" == "True" ]]; then
 		download_raw_ds
 	fi
 	if [[ "$skip_create_derivatives" == "False" ]]; then
+		datalad update --merge -d "$STAGING/templateflow"
 		create_derivatives_ds
 	fi
 	if [[ "$skip_run_software" == "False" ]]; then
