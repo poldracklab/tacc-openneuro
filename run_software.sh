@@ -57,6 +57,9 @@ create_derivatives_ds () {
 			mkdir sourcedata
 			datalad clone -d . "$raw_path" sourcedata/raw --reckless ephemeral
 			datalad clone -d . "$STAGING/templateflow" sourcedata/templateflow --reckless ephemeral
+			for sub_ds in "$STAGING"/templateflow/tpl*; do
+				datalad clone "$sub_ds" sourcedata/templateflow/$(basename "$sub_ds") --reckless ephemeral
+			done
 	  
 			cp code/tacc-openneuro/gitattributes_openneuro.txt .gitattributes
 			cp code/tacc-openneuro/gitattributes_datalad_openneuro.txt .datalad/.gitattributes
