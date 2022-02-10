@@ -204,7 +204,7 @@ clone_derivatives () {
 							break
 						fi
 					done
-					if [[ "$(tail -n 10 $stdout)" != *"$success_phrase"* ]]; then
+					if [[ "$(tail -n 10 $stdout)" != *"$success_phrase"* ]] || [[ "$(tail -n 10 $stdout)" == *"did not finish successfully"* ]]; then
 						echo "$stdout failed"
 						failed_array+=("$sub")
 					fi
