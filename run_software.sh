@@ -100,7 +100,7 @@ run_software () {
 	
 		if [[ "$software" == "fmriprep" ]]; then
 			walltime="48:00:00"
-			killjob_factors=".75,.15"
+			killjob_factors=".75,.25"
 			if [ -z "$subs_per_node" ]; then
 				subs_per_node=4
 			fi
@@ -139,7 +139,7 @@ run_software () {
 
 		datalad save -r
 
-		export SINGULARITYENV_TEMPLATEFLOW_HOME="sourcedata/templateflow/"
+		export SINGULARITYENV_TEMPLATEFLOW_HOME="$derivatives_path/sourcedata/templateflow/"
 		export SINGULARITYENV_TEMPLATEFLOW_USE_DATALAD="true"
 		# Submit jobs via reproman in batches 
 		# make sure to 'unlock' outputs
@@ -315,6 +315,8 @@ while [[ "$#" > 0 ]]; do
 		dataset_list=$(cat $2); shift ;;
 	--dataset)
 		dataset_list=$(echo $2 | sed 's/,/\n/gi'); shift ;;
+	--dataset-all)
+		dataset_list=$(find derivatives/fmriprep/ -name "ds*" -maxdepth 1 | sed -r 's/.*(ds......).*/\1/g') ;;
 	--skip-raw-download)
 		skip_raw_download="True" ;;
 	--skip-create-derivatives)
