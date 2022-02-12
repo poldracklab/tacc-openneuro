@@ -316,7 +316,7 @@ while [[ "$#" > 0 ]]; do
 	--dataset)
 		dataset_list=$(echo $2 | sed 's/,/\n/gi'); shift ;;
 	--dataset-all)
-		dataset_list=$(find derivatives/fmriprep/ -name "ds*" -maxdepth 1 | sed -r 's/.*(ds......).*/\1/g') ;;
+		dataset_list=$(find "$STAGING"/derivatives/"$software"/ -name "ds*" -maxdepth 1 | sed -r 's/.*(ds......).*/\1/g') ;;
 	--skip-raw-download)
 		skip_raw_download="True" ;;
 	--skip-create-derivatives)
