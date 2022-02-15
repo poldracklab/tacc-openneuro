@@ -304,7 +304,7 @@ while [[ "$#" > 0 ]]; do
 	--no-syn-sdc)
 		syn_sdc="False" ;;
 	--skull-strip-t1w)
-		ss_force=$2; shift ;;
+		skull_strip=$2; shift ;;
 	--sub-list)
 		all_subs_arg=$2; shift ;;
 	--subs-per-job)
