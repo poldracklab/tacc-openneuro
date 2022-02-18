@@ -8,4 +8,7 @@
 README annex.largefiles=nothing
 CHANGES annex.largefiles=nothing
 dataset_description.json annex.largefiles=nothing
+desc-aparcaseg_dseg.tsv annex.largefiles=nothing
+desc-aseg_dseg.tsv annex.largefiles=nothing
+logs/CITATION* annex.largefiles=nothing
 .bidsignore annex.largefiles=nothing
