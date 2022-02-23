@@ -53,7 +53,7 @@ create_derivatives_ds () {
 			cd "$derivatives_path"
 			rm CHANGELOG.md README.md code/README.md
 			datalad clone -d . "$STAGING/containers" code/containers --reckless ephemeral
-			git clone https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
+			datalad install -d . https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
 			mkdir sourcedata
 			datalad clone -d . "$raw_path" sourcedata/raw --reckless ephemeral
 			datalad clone -d . "$STAGING/templateflow" sourcedata/templateflow --reckless ephemeral
@@ -84,7 +84,7 @@ create_derivatives_ds () {
 				datalad update --merge -d "$derivatives_path/sourcedata/raw"
 			fi
 			datalad update --merge -d "$derivatives_path/code/containers"
-			datalad update --merge -d "$derivatives_path/code/tacc-openneuro"	
+			git -C "$derivatives_path/code/tacc-openneuro" pull
 			datalad update --merge -d "$derivatives_path/sourcedata/templateflow"	  
 			  
 		fi
@@ -96,6 +96,7 @@ run_software () {
 	while IFS= read -r raw_ds; do  
 		derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}" 
 		raw_path="$STAGING/raw/$raw_ds"
+		fs_path="$derivatives_path/sourcedata/freesurfer"
 		cd "$derivatives_path"
 	
 		if [[ "$software" == "fmriprep" ]]; then
@@ -108,15 +109,20 @@ run_software () {
 			command=("--output-spaces" "MNI152NLin2009cAsym:res-2" "anat" "func" "fsaverage5" "--nthreads" "14" \
 				"--omp-nthreads" "7" "--skip-bids-validation" "--notrack" "--fs-license-file" "$fs_license" \
 					"--use-aroma" "--ignore" "slicetiming" "--output-layout" "bids" "--cifti-output" "--resource-monitor" \
-						"--skull-strip-t1w" "$skull_strip" "--mem_mb" "$mem_mb" "--bids-database-dir" "/tmp")
+						"--skull-strip-t1w" "$skull_strip" "--mem_mb" "$mem_mb" "--bids-database-dir" "/tmp" "--md-only-boilerplate")
 			if [[ "$syn_sdc" ==  "True" ]]; then
 				command+=("--use-syn-sdc")
 				command+=("warn")
 			fi
+			if [[ -d "$fs_path" ]]; then
+				datalad unlock "$fs_path/sub*/scripts/" 
+				find "$fs_path" -name "isRunning" -exec rm -rf {} +
+				git commit -m "unlock freesurfer scripts"
+			fi
 			
 		elif [[ "$software" == "mriqc" ]]; then
 			walltime="8:00:00"
-			killjob_factors=".85,.15"
+			killjob_factors=".85,.25"
 			if [ -z "$subs_per_node" ]; then
 				subs_per_node=5
 			fi
@@ -134,6 +140,12 @@ run_software () {
 		if [[ "$skip_workdir_delete" == "False" ]]; then
 			for sub in $all_subs; do
 				rm -rf "$work_dir/${raw_ds}_sub-$sub"
+			done
+		fi
+		
+		if [[ "$rerun" == "True" ]]; then
+			for sub in $all_subs; do
+				rm -rf "$derivatives_path/sub-${sub}"*
 			done
 		fi
 
@@ -161,7 +173,7 @@ run_software () {
 			fi
 			
 			reproman run -r local --sub slurm --orc datalad-no-remote \
-				--bp sub="$sub_list" --output . \
+				--bp sub="$sub_list" \
 					--jp num_processes="$processes" --jp num_nodes="$nodes" \
 						--jp walltime="$walltime" --jp queue="$queue" --jp launcher=true \
 							--jp job_name="${raw_ds}-${software}" --jp mail_type=END --jp mail_user="$user_email" \
@@ -265,6 +277,7 @@ clone_derivatives () {
 		git config --file .gitmodules --replace-all submodule.sourcedata/raw.url https://github.com/OpenNeuroDatasets/"$raw_ds".git
 		git config --file .gitmodules --unset-all submodule.sourcedata/raw.datalad-url
 		git config --file .gitmodules --unset-all submodule.sourcedata/templateflow.datalad-url
+		git-annex lock
 		datalad save -r
 		datalad install . -r
 		
@@ -330,6 +343,9 @@ while [[ "$#" > 0 ]]; do
 		download_create_run="False" ;;
 	--ignore)
 		ignore="True" ;;
+	--rerun)
+		skip_workdir_delete="True"
+		rerun="True" ;;
 	--check)
 		check="True"
 		clone_derivatives="True"
