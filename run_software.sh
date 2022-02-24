@@ -246,12 +246,12 @@ check_results () {
 	fi
 	
 	if [[ "$fail" == "True" ]]; then
-		success_array+=("${raw_ds}: fail")
+		fail_array+=("$raw_ds")
 		if [[ "$ignore" != "True" ]]; then
 			continue
 		fi
 	else	
-		success_array+=("${raw_ds}: success")
+		success_array+=("$raw_ds")
 	fi		
 }
 
@@ -379,10 +379,21 @@ if [[ "$download_create_run" == "True" ]]; then
 	
 elif [[ "$clone_derivatives" == "True" ]]; then
 	success_array=()
+	fail_array=()
 	while IFS= read -r raw_ds; do  
 		check_results "$raw_ds"
 	done <<< "$dataset_list"
-	echo
-	printf "%s\n" "${success_array[@]}"
+	printf -v success_print "%s," "${success_array[@]}"
+	printf -v failed_print "%s," "${fail_array[@]}"
+	echo -e "\nSuccess: "
+	echo "${success_print%,}"
+	echo -e "\nFailed: "
+	echo "${failed_print%,}"
+	
+	if [[ "$check" != "True" ]]; then
+		while IFS= read -r raw_ds; do  
+			clone_derivatives "$raw_ds" 
+		done <<< "$(echo ${success_print%,} | sed 's/,/\n/gi')"
+	fi
 fi
 	
