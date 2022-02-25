@@ -129,7 +129,13 @@ run_software () {
 	fi
 
 	if [ -z "$all_subs_arg" ]; then
-		local all_subs=$(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort)
+		if [[ "$rerun" == "True" ]]; then
+			unset failed_joined
+			check_results "$raw_ds"
+			local all_subs=$( echo "$failed_joined" | sed 's/,/\n/g')
+		else
+			local all_subs=$(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort)
+		fi
 	else
 		local all_subs=$(echo "$all_subs_arg" | sed 's/,/\n/g')
 	fi
@@ -140,13 +146,13 @@ run_software () {
 			rm -rf "$work_dir/${raw_ds}_sub-$sub"
 		done
 	fi
-	
+
 	if [[ "$rerun" == "True" ]]; then
 		for sub in $all_subs; do
 			rm -rf "$derivatives_path/sub-${sub}"*
 		done
 	fi
-
+	
 	datalad save -r
 
 	export SINGULARITYENV_TEMPLATEFLOW_HOME="$derivatives_path/sourcedata/templateflow/"
@@ -188,6 +194,13 @@ check_results () {
 	local derivatives_path_corral="$OPENNEURO/$software/${raw_ds}-${software}"
 	local raw_path="$STAGING/raw/$raw_ds"
 	
+	if [ -z "$success_array" ]; then
+		success_array=()	
+	fi
+	if [ -z "$fail_array" ]; then
+		fail_array=()
+	fi
+	
 	local fail="False"
 	if [[ "$software" == "mriqc" ]]; then
 		local success_phrase="MRIQC completed"
@@ -197,7 +210,7 @@ check_results () {
 	local reproman_logs="$(ls -1d $derivatives_path/.reproman/jobs/local/* | sort -nr)"
 	local sub_array
 	readarray -t sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort )
-	failed_array=()
+	local failed_sub_array=()
 	while IFS= read -r job_dir && [ ${#sub_array[@]} -gt 0 ]; do		
 		echo "$job_dir"
 		for stdout in "$job_dir"/stdout.*; do
@@ -213,16 +226,16 @@ check_results () {
 				done
 				if [[ "$(tail -n 10 $stdout)" != *"$success_phrase"* ]] || [[ "$(tail -n 10 $stdout)" == *"did not finish successfully"* ]]; then
 					echo "$stdout failed"
-					failed_array+=("$sub")
+					failed_sub_array+=("$sub")
 				fi
 			fi
 		done
 	done <<< "$reproman_logs"
 	
-	if [ ${#failed_array[@]} -gt 0 ]; then
+	if [ ${#failed_sub_array[@]} -gt 0 ]; then
 		local fail="True"
 		echo "The following subjects failed: "
-		printf -v failed_joined '%s,' "${failed_array[@]}"
+		printf -v failed_joined '%s,' "${failed_sub_array[@]}"
 		echo "${failed_joined%,}"
 	fi
 	
@@ -234,6 +247,7 @@ check_results () {
 	if [ ${#unique_array[@]} -gt 0 ]; then
 		local fail="True"
 		echo "The following subjects dirs do not exist: "
+		local unique_joined
 		printf -v unique_joined '%s,' "${unique_array[@]}"
 		echo "${unique_joined%,}"
 	fi
@@ -241,15 +255,13 @@ check_results () {
 	if [ ${#sub_array[@]} -gt 0 ]; then
 		local fail="True"
 		echo "The following subjects have not been run: "
+		local sub_joined
 		printf -v sub_joined '%s,' "${sub_array[@]}"
 		echo "${sub_joined%,}"
 	fi
 	
 	if [[ "$fail" == "True" ]]; then
 		fail_array+=("$raw_ds")
-		if [[ "$ignore" != "True" ]]; then
-			continue
-		fi
 	else	
 		success_array+=("$raw_ds")
 	fi		
@@ -378,8 +390,6 @@ if [[ "$download_create_run" == "True" ]]; then
 	fi
 	
 elif [[ "$clone_derivatives" == "True" ]]; then
-	success_array=()
-	fail_array=()
 	while IFS= read -r raw_ds; do  
 		check_results "$raw_ds"
 	done <<< "$dataset_list"
