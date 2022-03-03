@@ -159,7 +159,7 @@ run_software () {
 			rm -rf "$derivatives_path/sub-${sub}"*
 		done
 		rm -rf "$derivatives_path"/sourcedata/freesurfer/fsaverage*
-		cp -r "$OPENNEURO"/freesurfer/ds000001-freesurfer/fsaverage*
+		rsync -tvrL "$OPENNEURO"/freesurfer/ds000001-freesurfer/fsaverage* sourcedata/freesurfer/
 	fi
 	
 	datalad save -r
