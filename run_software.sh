@@ -99,7 +99,7 @@ run_software () {
 
 	if [[ "$software" == "fmriprep" ]]; then
 		local walltime="48:00:00"
-		local killjob_factors=".75,.25"
+		local killjob_factors=".85,.25"
 		if [ -z "$subs_per_node" ]; then
 			local subs_per_node=4
 		fi
@@ -113,8 +113,8 @@ run_software () {
 			command+=("warn")
 		fi
 		if [[ -d "$fs_path" ]]; then
-			datalad unlock "$fs_path/sub*/scripts/" 
-			find "$fs_path" -name "isRunning" -exec rm -rf {} +
+			datalad unlock "$fs_path"/sub*/scripts/
+			find "$fs_path" -name "*IsRunning*" -delete
 			git commit -m "unlock freesurfer scripts"
 		fi
 		
@@ -133,6 +133,10 @@ run_software () {
 			unset failed_joined
 			check_results "$raw_ds"
 			local all_subs=$( echo "$failed_joined" | sed 's/,/\n/g')
+		elif [[ "$remaining" == "True" ]]; then
+			unset sub_joined
+			check_results "$raw_ds"
+			local all_subs=$( echo "$sub_joined" | sed 's/,/\n/g')
 		else
 			local all_subs=$(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort)
 		fi
@@ -148,9 +152,14 @@ run_software () {
 	fi
 
 	if [[ "$rerun" == "True" ]]; then
+		cd "$derivatives_path/code/containers"
+		git-annex repair --force
+		cd "$derivatives_path"
 		for sub in $all_subs; do
 			rm -rf "$derivatives_path/sub-${sub}"*
 		done
+		rm -rf "$derivatives_path"/sourcedata/freesurfer/fsaverage*
+		cp -r "$OPENNEURO"/freesurfer/ds000001-freesurfer/fsaverage*
 	fi
 	
 	datalad save -r
@@ -188,6 +197,13 @@ run_software () {
 	done
 }
 
+convertsecs () {
+ ((h=${1}/3600))
+ ((m=(${1}%3600)/60))
+ ((s=${1}%60))
+ printf "%02d:%02d:%02d\n" $h $m $s
+}
+
 check_results () {
 	local raw_ds="$1"
 	local derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
@@ -200,8 +216,10 @@ check_results () {
 	if [ -z "$fail_array" ]; then
 		fail_array=()
 	fi
+	if [ -z "$incomplete_array" ]; then
+		incomplete_array=()
+	fi
 	
-	local fail="False"
 	if [[ "$software" == "mriqc" ]]; then
 		local success_phrase="MRIQC completed"
 	elif [[ "$software" == "fmriprep" ]]; then
@@ -210,10 +228,15 @@ check_results () {
 	local reproman_logs="$(ls -1d $derivatives_path/.reproman/jobs/local/* | sort -nr)"
 	local sub_array
 	readarray -t sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort )
+	local success_sub_array=()
 	local failed_sub_array=()
+	local incomplete_sub_array=()
+	local runtime_array=()
+	
 	while IFS= read -r job_dir && [ ${#sub_array[@]} -gt 0 ]; do		
 		echo "$job_dir"
 		for stdout in "$job_dir"/stdout.*; do
+			local stderr=$(echo "$stdout" | sed 's/stdout/stderr/g')
 			local sub=$(head -n 10 "$stdout" | grep "\-\-participant-label" | sed -r 's/.*--participant-label \x27([^\x27]*)\x27.*/\1/g'01)
 			# Look for exact match in array
 			if [[ ${sub_array[*]} =~ (^|[[:space:]])"$sub"($|[[:space:]]) ]]; then
@@ -224,19 +247,46 @@ check_results () {
 						break
 					fi
 				done
-				if [[ "$(tail -n 10 $stdout)" != *"$success_phrase"* ]] || [[ "$(tail -n 10 $stdout)" == *"did not finish successfully"* ]]; then
-					echo "$stdout failed"
+				if ! grep -q "$success_phrase" "$stdout" || grep -q "did not finish successfully" "$stdout" || grep -q "Error" "$stdout"; then
+					echo "$stdout (sub-$sub) failed "
 					failed_sub_array+=("$sub")
+				elif grep -q "Error" "$stderr"; then
+					echo "$stderr (sub-$sub) failed"
+					failed_sub_array+=("$sub")
+				else
+					success_sub_array+=("$sub")
 				fi
+				
+				# get runtime
+				start_time=$(head "$stdout" | sed -rn 's|.*([0-9]{2})([0-9]{2})([0-9]{2})-([0-9]{2}):([0-9]{2}):([0-9]{2}),.*|20\1-\2-\3 \4:\5:\6|p' )
+				end_time=$(tail -20 "$stdout" | sed -rn 's|.*([0-9]{2})([0-9]{2})([0-9]{2})-([0-9]{2}):([0-9]{2}):([0-9]{2}),.*|20\1-\2-\3 \4:\5:\6|p' | tail -n1 )
+				start_sec=$(date --date "$start_time" +%s)
+				end_sec=$(date --date "$end_time" +%s)
+				delta_sec=$((end_sec - start_sec))
+				delta=$(convertsecs $delta_sec)
+				sub_status=$(cat $(echo $stdout | sed 's/stdout/status/g'))
+				runtime_array+=("sub-${sub}: $delta $sub_status")
+				
 			fi
 		done
 	done <<< "$reproman_logs"
 	
+	if [ ${#success_sub_array[@]} -gt 0 ]; then
+		local success_joined
+		printf -v success_joined '%s,' "${success_sub_array[@]}"
+		if [[ "$check" == "True" ]]; then
+			echo "The following subjects were successful: "
+			echo "${success_joined%,}"
+		fi
+	fi
+	
 	if [ ${#failed_sub_array[@]} -gt 0 ]; then
 		local fail="True"
-		echo "The following subjects failed: "
 		printf -v failed_joined '%s,' "${failed_sub_array[@]}"
-		echo "${failed_joined%,}"
+		if [[ "$check" == "True" ]]; then
+			echo "The following subjects failed: "
+			echo "${failed_joined%,}"
+		fi
 	fi
 	
 	# Check all subject directories exist
@@ -245,25 +295,43 @@ check_results () {
 	readarray -t derivatives_sub_array < <(find "$derivatives_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
 	local unique_array=($(comm -3 <(printf "%s\n" "${raw_sub_array[@]}" | sort) <(printf "%s\n" "${derivatives_sub_array[@]}" | sort) | sort -n)) # print unique elements
 	if [ ${#unique_array[@]} -gt 0 ]; then
-		local fail="True"
-		echo "The following subjects dirs do not exist: "
+		local incomplete="True"
 		local unique_joined
 		printf -v unique_joined '%s,' "${unique_array[@]}"
-		echo "${unique_joined%,}"
+		if [[ "$check" == "True" ]]; then
+			echo "The following subjects dirs do not exist: "
+			echo "${unique_joined%,}"
+		fi
 	fi
 	
 	if [ ${#sub_array[@]} -gt 0 ]; then
-		local fail="True"
-		echo "The following subjects have not been run: "
-		local sub_joined
+		local incomplete="True"
 		printf -v sub_joined '%s,' "${sub_array[@]}"
-		echo "${sub_joined%,}"
+		if [[ "$check" == "True" ]]; then
+			echo "The following subjects have not been run: "
+			echo "${sub_joined%,}"
+		fi
 	fi
+	
+	total_run_subs=$(bc -l <<< "( ${#success_sub_array[@]} + ${#failed_sub_array[@]} )" )
+	if [ ${#success_sub_array[@]} -eq 0 ]; then
+		success_percent=0
+	elif [ ${#failed_sub_array[@]} -eq 0 ]; then
+		local fail="False" 
+		success_percent=100
+	else
+		success_percent=$(bc -l <<< "scale = 10; ( ${#success_sub_array[@]} / $total_run_subs ) * 100" )
+	fi
+	echo "${success_percent:0:4}% (${#success_sub_array[@]}/$total_run_subs) of attempted subjects were successful."
+	
+	printf '%s\n' "${runtime_array[@]}"
 	
 	if [[ "$fail" == "True" ]]; then
 		fail_array+=("$raw_ds")
-	else	
+	elif [[ "$incomplete" != "True" ]]; then
 		success_array+=("$raw_ds")
+	else
+		incomplete_array+=("$raw_ds")
 	fi		
 }
 
@@ -298,6 +366,7 @@ clone_derivatives () {
 	fi
 	mv -f "$derivatives_path" "$derivatives_path_old"
 }
+
 
 # initialize variables
 user_email="jbwexler@tutanota.com"
@@ -334,7 +403,7 @@ while [[ "$#" > 0 ]]; do
 	--dataset-file)
 		dataset_list=$(cat $2); shift ;;
 	--dataset)
-		dataset_list=$(echo $2 | sed 's/,/\n/gi'); shift ;;
+		dataset_list=$(echo $2 | sed 's/,/\n/g'); shift ;;
 	--dataset-all)
 		dataset_list=$(find "$STAGING"/derivatives/"$software"/ -name "ds*" -maxdepth 1 | sed -r 's/.*(ds......).*/\1/g') ;;
 	--skip-raw-download)
@@ -350,6 +419,9 @@ while [[ "$#" > 0 ]]; do
 		download_create_run="False" ;;
 	--ignore)
 		ignore="True" ;;
+	--remaining)
+		subs_per_job="2000"
+		remaining="True" ;;
 	--rerun)
 		skip_workdir_delete="True"
 		rerun="True" ;;
@@ -387,23 +459,24 @@ if [[ "$download_create_run" == "True" ]]; then
 		while IFS= read -r raw_ds; do  
 			run_software "$raw_ds"
 		done <<< "$dataset_list"		
-	fi
-	
+	fi	
 elif [[ "$clone_derivatives" == "True" ]]; then
 	while IFS= read -r raw_ds; do  
 		check_results "$raw_ds"
 	done <<< "$dataset_list"
 	printf -v success_print "%s," "${success_array[@]}"
 	printf -v failed_print "%s," "${fail_array[@]}"
+	printf -v incomplete_print "%s," "${incomplete_array[@]}"
 	echo -e "\nSuccess: "
 	echo "${success_print%,}"
-	echo -e "\nFailed: "
+	echo -e "Failed: "
 	echo "${failed_print%,}"
+	echo -e "Incomplete: "
+	echo "${incomplete_print%,}"
 	
 	if [[ "$check" != "True" ]]; then
 		while IFS= read -r raw_ds; do  
 			clone_derivatives "$raw_ds" 
-		done <<< "$(echo ${success_print%,} | sed 's/,/\n/gi')"
+		done <<< "$(echo ${success_print%,} | sed 's/,/\n/g')"
 	fi
 fi
-	
