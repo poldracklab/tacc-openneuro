@@ -365,6 +365,7 @@ clone_derivatives () {
 		rm -rf "$derivatives_path_old"
 	fi
 	mv -f "$derivatives_path" "$derivatives_path_old"
+	rm -rf "$SCRATCH/work_dir/$software/$raw_ds"*
 }
 
 
