@@ -52,7 +52,7 @@ create_derivatives_ds () {
 		cd "$derivatives_path"
 		rm CHANGELOG.md README.md code/README.md
 		datalad clone -d . "$STAGING/containers" code/containers --reckless ephemeral
-		datalad install -d . https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
+		datalad clone -d . https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
 		mkdir sourcedata
 		datalad clone -d . "$raw_path" sourcedata/raw --reckless ephemeral
 		datalad clone -d . "$STAGING/templateflow" sourcedata/templateflow --reckless ephemeral
