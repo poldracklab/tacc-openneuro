@@ -158,8 +158,10 @@ run_software () {
 		for sub in $all_subs; do
 			rm -rf "$derivatives_path/sub-${sub}"*
 		done
-		rm -rf "$derivatives_path"/sourcedata/freesurfer/fsaverage*
-		rsync -tvrL "$OPENNEURO"/freesurfer/ds000001-freesurfer/fsaverage* sourcedata/freesurfer/
+		if [[ "$software" == "fmriprep" ]]; then
+			rm -rf "$derivatives_path"/sourcedata/freesurfer/fsaverage*
+			rsync -tvrL "$OPENNEURO"/freesurfer/ds000001-freesurfer/fsaverage* sourcedata/freesurfer/
+		fi
 	fi
 	
 	datalad save -r
