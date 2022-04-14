@@ -3,38 +3,22 @@
 # Clone/update raw datasets and download necessary data for fmriprep/mriqc
 download_raw_ds () {
 	local raw_ds="$1"
-	local raw_path="$STAGING/raw/$raw_ds"
-	local derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
+	local raw_corral_path="$OPENNEURO/raw/$raw_ds"
 	
-	if [[ -d "$raw_path" ]] && [[ ! -f "$raw_path/dataset_description.json" ]] || [[ "$(git -C "$raw_path" fsck)" == *"dangling"* ]]; then
-		# Delete datasets on $SCRATCH that have been purged by TACC
-		chmod -R 775 "$raw_path"
-		rm -rf "$raw_path"
-		datalad remove "$derivatives_path/sourcedata/raw" --nocheck -r
-	fi
-	
-	if [[ ! -d "$raw_path" ]]; then
-		datalad clone https://github.com/OpenNeuroDatasets/${raw_ds}.git "$raw_path"
+	if [[ ! -d "$raw_corral_path" ]]; then
+		datalad clone https://github.com/OpenNeuroDatasets/${raw_ds}.git "$raw_corral_path"
 
 		# Ensure permissions for the group
-		setfacl -R -m g:G-802037:rwX "$raw_path"
-		find "$raw_path" -type d | xargs setfacl -R -m d:g:G-802037:rwX
-  
-		# Get files from corral if available
-		local corral_ds="$OPENNEURO/raw/$raw_ds"
-		if [[ -d "$corral_ds" ]]; then
-			datalad update --merge -d "$corral_ds"
-			datalad siblings configure -d "$corral_ds" -s scratch --url "$raw_path"
-			datalad push -d "$corral_ds" --to scratch --data anything
-		fi
+		setfacl -R -m g:G-802037:rwX "$raw_corral_path"
+		find "$raw_corral_path" -type d | xargs setfacl -R -m d:g:G-802037:rwX
 
-		cd "$raw_path" 
+		cd "$raw_corral_path" 
 		find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
 			-exec datalad get {} +
 	else
 		# Update
-		cd "$raw_path"				
-		datalad update --merge
+		cd "$raw_corral_path"				
+		datalad update -s origin --merge
 		find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
 			-exec datalad get {} +
 	fi
@@ -43,22 +27,18 @@ download_raw_ds () {
 # Create derivatives dataset if necessary
 create_derivatives_ds () {
 	local raw_ds="$1"
-	local derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
-	local raw_path="$STAGING/raw/$raw_ds"
+	local derivatives_corral_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 
 	# to-do: fix reckless clone issue when original dataset doesn't download properly 
-	if [[ ! -d "$derivatives_path" ]]; then
-		datalad create -c yoda "$derivatives_path"
-		cd "$derivatives_path"
+	if [[ ! -d "$derivatives_corral_path" ]]; then
+		datalad create -c yoda "$derivatives_corral_path"
+		cd "$derivatives_corral_path"
 		rm CHANGELOG.md README.md code/README.md
-		datalad clone -d . "$STAGING/containers" code/containers --reckless ephemeral
+		datalad clone -d . https://github.com/ReproNim/containers.git code/containers
 		datalad clone -d . https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
 		mkdir sourcedata
-		datalad clone -d . "$raw_path" sourcedata/raw --reckless ephemeral
-		datalad clone -d . "$STAGING/templateflow" sourcedata/templateflow --reckless ephemeral
-		for sub_ds in "$STAGING"/templateflow/tpl*; do
-			datalad clone "$sub_ds" sourcedata/templateflow/$(basename "$sub_ds") --reckless ephemeral
-		done
+		datalad clone -d . https://github.com/OpenNeuroDatasets/"${raw_ds}".git sourcedata/raw
+		datalad clone -d . https://github.com/templateflow/templateflow.git sourcedata/templateflow
   
 		cp code/tacc-openneuro/gitattributes_openneuro.txt .gitattributes
 		cp code/tacc-openneuro/gitattributes_datalad_openneuro.txt .datalad/.gitattributes
@@ -67,26 +47,67 @@ create_derivatives_ds () {
 			# Look for existing freesurfer derivatives
 			local fs_path="$OPENNEURO/freesurfer/${raw_ds}-freesurfer"
 			if [[ -d "$fs_path" ]]; then
-				rsync -tvrL "$fs_path/" "$derivatives_path/sourcedata/freesurfer/"
+				rsync -tvrL "$fs_path/" "$derivatives_corral_path/sourcedata/freesurfer/"
 			fi
 		fi
   
 		# Ensure permissions for the group
-		setfacl -R -m g:G-802037:rwX "$derivatives_path"
-		find "$derivatives_path" -type d | xargs setfacl -R -m d:g:G-802037:rwX
+		setfacl -R -m g:G-802037:rwX "$derivatives_corral_path"
+		find "$derivatives_corral_path" -type d | xargs setfacl -R -m d:g:G-802037:rwX
+		
+		datalad save -m "Initialize dataset"
 	else
-		# Update
-		if [[ ! -d "$derivatives_path/sourcedata/raw" ]]; then
-			cd "$derivatives_path"
-			datalad clone -d . "$raw_path" sourcedata/raw --reckless ephemeral
-		else
-			datalad update --merge -d "$derivatives_path/sourcedata/raw"
-		fi
-		datalad update --merge -d "$derivatives_path/code/containers"
-		git -C "$derivatives_path/code/tacc-openneuro" pull
-		datalad update --merge -d "$derivatives_path/sourcedata/templateflow"	  
-		  
+		datalad save -d "$derivatives_corral_path"  
 	fi
+}
+
+# Recreates datalad dataset in case of purged files
+cheap_clone () {
+	url="${1%/}"
+	loc="${2%/}"
+
+	if [ -d "$loc" ]; then
+	    mv "$loc" "$loc.aside"
+		git clone "$url" "$loc"
+	else
+		datalad clone "$url" "$loc"
+	fi
+
+	if [ -d "${loc}.aside/.git/annex/objects" ]; then
+	    git -C $loc annex init;
+	    mkdir -p "$loc/.git/annex/"
+	    mv "${loc}.aside/.git/annex/objects" "$loc/.git/annex/"
+	    git -C "$loc" annex fsck
+	fi
+
+	if [ -d "$loc" ]; then
+	    rm -rf "$loc.aside"
+	fi
+
+}
+
+# Setup derivatives directory on scratch
+setup_scratch_ds () {
+	local raw_ds="$1"
+	local raw_corral_path="$OPENNEURO/raw/$raw_ds"
+	local raw_scratch_path="$STAGING/raw/$raw_ds"
+	local derivatives_corral_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
+	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
+	
+	cheap_clone "$raw_corral_path" "$raw_scratch_path"
+	cd "$raw_scratch_path"
+	find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
+		-exec datalad get {} +	
+	
+	cheap_clone "$derivatives_corral_path" "$derivatives_scratch_path"
+	cd "$derivatives_scratch_path"
+	datalad get .
+	datalad clone -d . "$raw_scratch_path" sourcedata/raw --reckless ephemeral
+	datalad clone -d . "$STAGING/containers" code/containers --reckless ephemeral
+	datalad clone -d . "$STAGING/templateflow" sourcedata/templateflow --reckless ephemeral
+	for sub_ds in "$STAGING"/templateflow/tpl*; do
+		datalad clone "$sub_ds" sourcedata/templateflow/$(basename "$sub_ds") --reckless ephemeral
+	done
 }
 
 # Run fmriprep or mriqc
@@ -164,7 +185,7 @@ run_software () {
 		fi
 	fi
 	
-	datalad save -r
+	datalad save -r -m "pre-run save"
 
 	export SINGULARITYENV_TEMPLATEFLOW_HOME="$derivatives_path/sourcedata/templateflow/"
 	export SINGULARITYENV_TEMPLATEFLOW_USE_DATALAD="true"
@@ -210,7 +231,7 @@ check_results () {
 	local raw_ds="$1"
 	local derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 	local derivatives_path_corral="$OPENNEURO/$software/${raw_ds}-${software}"
-	local raw_path="$STAGING/raw/$raw_ds"
+	local raw_path="$OPENNEURO/raw/$raw_ds"
 	
 	if [ -z "$success_array" ]; then
 		success_array=()	
@@ -347,7 +368,7 @@ clone_derivatives () {
 	datalad unlock -d "$derivatives_path" "$derivatives_path"/remora*
 	mkdir "$OPENNEURO/logs/$software/remora/${raw_ds}-${software}-remora/"
 	mv "$derivatives_path"/remora* "$OPENNEURO/logs/$software/remora/${raw_ds}-${software}-remora/"
-	datalad save -d "$derivatives_path"
+	datalad save -d "$derivatives_path" -m "remove remora logs from ds"
 	
 	datalad clone "$derivatives_path" "$derivatives_path_corral"
 	cd "$derivatives_path_corral/$ds"
@@ -358,7 +379,7 @@ clone_derivatives () {
 	git config --file .gitmodules --unset-all submodule.sourcedata/raw.datalad-url
 	git config --file .gitmodules --unset-all submodule.sourcedata/templateflow.datalad-url
 	git-annex lock
-	datalad save -r
+	datalad save -r -m "change gitmodule urls to origin"
 	datalad install . -r
 	
 	local derivatives_path_old="$STAGING/derivatives/$software/old/${raw_ds}-${software}"
@@ -453,13 +474,15 @@ if [[ "$download_create_run" == "True" ]]; then
 		done <<< "$dataset_list"
 	fi
 	if [[ "$skip_create_derivatives" == "False" ]]; then
-		datalad update --merge -d "$STAGING/templateflow"
+		rsync -av "$OPENNEURO/software/containers" "$STAGING"
+		rsync -av "$OPENNEURO/software/templateflow" "$STAGING"
 		while IFS= read -r raw_ds; do  
 			create_derivatives_ds "$raw_ds"
 		done <<< "$dataset_list"	
 	fi
 	if [[ "$skip_run_software" == "False" ]]; then
 		while IFS= read -r raw_ds; do  
+			setup_scratch_ds "$raw_ds"
 			run_software "$raw_ds"
 		done <<< "$dataset_list"		
 	fi	
