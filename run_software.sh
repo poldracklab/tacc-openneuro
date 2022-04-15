@@ -33,6 +33,7 @@ create_derivatives_ds () {
 	if [[ ! -d "$derivatives_corral_path" ]]; then
 		datalad create -c yoda "$derivatives_corral_path"
 		cd "$derivatives_corral_path"
+		git config receive.denyCurrentBranch updateInstead # Allow git pushes to checked out branch
 		rm CHANGELOG.md README.md code/README.md
 		datalad clone -d . https://github.com/ReproNim/containers.git code/containers
 		datalad clone -d . https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
