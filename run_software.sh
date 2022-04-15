@@ -27,12 +27,12 @@ download_raw_ds () {
 # Create derivatives dataset if necessary
 create_derivatives_ds () {
 	local raw_ds="$1"
-	local derivatives_corral_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
+	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 
 	# to-do: fix reckless clone issue when original dataset doesn't download properly 
-	if [[ ! -d "$derivatives_corral_path" ]]; then
-		datalad create -c yoda "$derivatives_corral_path"
-		cd "$derivatives_corral_path"
+	if [[ ! -d "$derivatives_inprocess_path" ]]; then
+		datalad create -c yoda "$derivatives_inprocess_path"
+		cd "$derivatives_inprocess_path"
 		git config receive.denyCurrentBranch updateInstead # Allow git pushes to checked out branch
 		rm CHANGELOG.md README.md code/README.md
 		datalad clone -d . https://github.com/ReproNim/containers.git code/containers
@@ -48,17 +48,17 @@ create_derivatives_ds () {
 			# Look for existing freesurfer derivatives
 			local fs_path="$OPENNEURO/freesurfer/${raw_ds}-freesurfer"
 			if [[ -d "$fs_path" ]]; then
-				rsync -tvrL "$fs_path/" "$derivatives_corral_path/sourcedata/freesurfer/"
+				rsync -tvrL "$fs_path/" "$derivatives_inprocess_path/sourcedata/freesurfer/"
 			fi
 		fi
   
 		# Ensure permissions for the group
-		setfacl -R -m g:G-802037:rwX "$derivatives_corral_path"
-		find "$derivatives_corral_path" -type d | xargs setfacl -R -m d:g:G-802037:rwX
+		setfacl -R -m g:G-802037:rwX "$derivatives_inprocess_path"
+		find "$derivatives_inprocess_path" -type d | xargs setfacl -R -m d:g:G-802037:rwX
 		
 		datalad save -m "Initialize dataset"
 	else
-		datalad save -d "$derivatives_corral_path"  
+		datalad save -d "$derivatives_inprocess_path"  
 	fi
 }
 
@@ -82,6 +82,7 @@ cheap_clone () {
 	fi
 
 	if [ -d "$loc" ]; then
+		chmod -R 775 "$loc.aside"
 	    rm -rf "$loc.aside"
 	fi
 
@@ -92,7 +93,7 @@ setup_scratch_ds () {
 	local raw_ds="$1"
 	local raw_corral_path="$OPENNEURO/raw/$raw_ds"
 	local raw_scratch_path="$STAGING/raw/$raw_ds"
-	local derivatives_corral_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
+	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 	
 	cheap_clone "$raw_corral_path" "$raw_scratch_path"
@@ -100,7 +101,7 @@ setup_scratch_ds () {
 	find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
 		-exec datalad get {} +	
 	
-	cheap_clone "$derivatives_corral_path" "$derivatives_scratch_path"
+	cheap_clone "$derivatives_inprocess_path" "$derivatives_scratch_path"
 	cd "$derivatives_scratch_path"
 	datalad get .
 	datalad clone -d . "$raw_scratch_path" sourcedata/raw --reckless ephemeral
@@ -114,10 +115,10 @@ setup_scratch_ds () {
 # Run fmriprep or mriqc
 run_software () {
 	local raw_ds="$1"
-	local derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}" 
+	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}" 
 	local raw_path="$STAGING/raw/$raw_ds"
-	local fs_path="$derivatives_path/sourcedata/freesurfer"
-	cd "$derivatives_path"
+	local fs_path="$derivatives_scratch_path/sourcedata/freesurfer"
+	cd "$derivatives_scratch_path"
 
 	if [[ "$software" == "fmriprep" ]]; then
 		local walltime="48:00:00"
@@ -174,21 +175,21 @@ run_software () {
 	fi
 
 	if [[ "$rerun" == "True" ]]; then
-		cd "$derivatives_path/code/containers"
+		cd "$derivatives_scratch_path/code/containers"
 		git-annex repair --force
-		cd "$derivatives_path"
+		cd "$derivatives_scratch_path"
 		for sub in $all_subs; do
-			rm -rf "$derivatives_path/sub-${sub}"*
+			rm -rf "$derivatives_scratch_path/sub-${sub}"*
 		done
 		if [[ "$software" == "fmriprep" ]]; then
-			rm -rf "$derivatives_path"/sourcedata/freesurfer/fsaverage*
+			rm -rf "$derivatives_scratch_path"/sourcedata/freesurfer/fsaverage*
 			rsync -tvrL "$OPENNEURO"/freesurfer/ds000001-freesurfer/fsaverage* sourcedata/freesurfer/
 		fi
 	fi
 	
 	datalad save -r -m "pre-run save"
 
-	export SINGULARITYENV_TEMPLATEFLOW_HOME="$derivatives_path/sourcedata/templateflow/"
+	export SINGULARITYENV_TEMPLATEFLOW_HOME="$derivatives_scratch_path/sourcedata/templateflow/"
 	export SINGULARITYENV_TEMPLATEFLOW_USE_DATALAD="true"
 	# Submit jobs via reproman in batches 
 	local count=0
@@ -215,7 +216,7 @@ run_software () {
 						--jp job_name="${raw_ds}-${software}" --jp mail_type=END --jp mail_user="$user_email" \
 							--jp "container=code/containers/bids-${software}" --jp \
 								killjob_factors="$killjob_factors" sourcedata/raw \
-									"$derivatives_path" participant --participant-label '{p[sub]}' \
+									"$derivatives_scratch_path" participant --participant-label '{p[sub]}' \
 										-w "$work_dir/${raw_ds}_sub-{p[sub]}" -vv "${command[@]}"
 		echo
 	done
@@ -228,12 +229,19 @@ convertsecs () {
  printf "%02d:%02d:%02d\n" $h $m $s
 }
 
+push () {
+	local raw_ds="$1"
+	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
+	datalad save -d "$derivatives_scratch_path"
+	datalad push --to origin -d "$derivatives_scratch_path"
+}
+
 check_results () {
 	local raw_ds="$1"
-	local derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
-	local derivatives_path_corral="$OPENNEURO/$software/${raw_ds}-${software}"
+	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
+	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 	local raw_path="$OPENNEURO/raw/$raw_ds"
-	
+		
 	if [ -z "$success_array" ]; then
 		success_array=()	
 	fi
@@ -249,7 +257,7 @@ check_results () {
 	elif [[ "$software" == "fmriprep" ]]; then
 		local success_phrase="fMRIPrep finished successfully"
 	fi
-	local reproman_logs="$(ls -1d $derivatives_path/.reproman/jobs/local/* | sort -nr)"
+	local reproman_logs="$(ls -1d $derivatives_inprocess_path/.reproman/jobs/local/* | sort -nr)"
 	local sub_array
 	readarray -t sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort )
 	local success_sub_array=()
@@ -316,7 +324,7 @@ check_results () {
 	# Check all subject directories exist
 	local raw_sub_array derivatives_sub_array
 	readarray -t raw_sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
-	readarray -t derivatives_sub_array < <(find "$derivatives_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
+	readarray -t derivatives_sub_array < <(find "$derivatives_inprocess_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
 	local unique_array=($(comm -3 <(printf "%s\n" "${raw_sub_array[@]}" | sort) <(printf "%s\n" "${derivatives_sub_array[@]}" | sort) | sort -n)) # print unique elements
 	if [ ${#unique_array[@]} -gt 0 ]; then
 		local incomplete="True"
@@ -361,19 +369,22 @@ check_results () {
 
 clone_derivatives () {
 	local raw_ds="$1"
-	local derivatives_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
-	local derivatives_path_corral="$OPENNEURO/$software/${raw_ds}-${software}"
+	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
+	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
+	local derivatives_final_path="$OPENNEURO/$software/${raw_ds}-${software}"
 	local raw_path="$STAGING/raw/$raw_ds"
 	
-	# Move remora logs to corral
-	datalad unlock -d "$derivatives_path" "$derivatives_path"/remora*
-	mkdir "$OPENNEURO/logs/$software/remora/${raw_ds}-${software}-remora/"
-	mv "$derivatives_path"/remora* "$OPENNEURO/logs/$software/remora/${raw_ds}-${software}-remora/"
-	datalad save -d "$derivatives_path" -m "remove remora logs from ds"
+	datalad save -d "$derivatives_scratch_path"
+	datalad push --to origin -d "$derivatives_scratch_path"
 	
-	datalad clone "$derivatives_path" "$derivatives_path_corral"
-	cd "$derivatives_path_corral/$ds"
-	datalad get .
+	# Move remora logs to corral
+	datalad unlock -d "$derivatives_inprocess_path" "$derivatives_inprocess_path"/remora*
+	mkdir "$OPENNEURO/logs/$software/remora/${raw_ds}-${software}-remora/"
+	mv "$derivatives_inprocess_path"/remora* "$OPENNEURO/logs/$software/remora/${raw_ds}-${software}-remora/"
+	datalad save -d "$derivatives_inprocess_path" -m "remove remora logs from ds"
+	
+	mv "$derivatives_inprocess_path" "$derivatives_final_path"
+	cd "$derivatives_final_path"
 	git config --file .gitmodules --replace-all submodule.code/containers.url https://github.com/ReproNim/containers.git
 	git config --file .gitmodules --unset-all submodule.code/containers.datalad-url
 	git config --file .gitmodules --replace-all submodule.sourcedata/raw.url https://github.com/OpenNeuroDatasets/"$raw_ds".git
@@ -383,12 +394,12 @@ clone_derivatives () {
 	datalad save -r -m "change gitmodule urls to origin"
 	datalad install . -r
 	
-	local derivatives_path_old="$STAGING/derivatives/$software/old/${raw_ds}-${software}"
-	if [[ -d "$derivatives_path_old" ]]; then
-		chmod -R 775 "$derivatives_path_old"
-		rm -rf "$derivatives_path_old"
+	local derivatives_scratch_path_old="$STAGING/derivatives/$software/old/${raw_ds}-${software}"
+	if [[ -d "$derivatives_scratch_path_old" ]]; then
+		chmod -R 775 "$derivatives_scratch_path_old"
+		rm -rf "$derivatives_scratch_path_old"
 	fi
-	mv -f "$derivatives_path" "$derivatives_path_old"
+	mv -f "$derivatives_scratch_path" "$derivatives_scratch_path_old"
 	rm -rf "$SCRATCH/work_dir/$software/$raw_ds"*
 }
 
@@ -405,6 +416,7 @@ skip_raw_download="False"
 skip_create_derivatives="False"
 skip_run_software="False"
 skip_workdir_delete="False"
+skip_setup_scratch="False"
 download_create_run="True"
 part="1"
 STAGING="$SCRATCH/openneuro_derivatives"
@@ -439,11 +451,20 @@ while [[ "$#" > 0 ]]; do
 		skip_run_software="True" ;;
 	--skip-workdir-delete)
 		skip_workdir_delete="True" ;;
+	--just-run-software)
+		skip_raw_download="True"
+		skip_create_derivatives="True"
+		skip_setup_scratch="True" ;;
+	--skip-setup-scratch)
+		skip_setup_scratch="True" ;;
 	--clone)
 		clone_derivatives="True"
 		download_create_run="False" ;;
 	--ignore)
 		ignore="True" ;;
+	--push)
+		download_create_run="False"
+		push="True" ;;
 	--remaining)
 		subs_per_job="2000"
 		remaining="True" ;;
@@ -481,9 +502,13 @@ if [[ "$download_create_run" == "True" ]]; then
 			create_derivatives_ds "$raw_ds"
 		done <<< "$dataset_list"	
 	fi
-	if [[ "$skip_run_software" == "False" ]]; then
+	if [[ "$skip_setup_scratch" == "False" ]]; then
 		while IFS= read -r raw_ds; do  
 			setup_scratch_ds "$raw_ds"
+		done <<< "$dataset_list"		
+	fi	
+	if [[ "$skip_run_software" == "False" ]]; then
+		while IFS= read -r raw_ds; do  
 			run_software "$raw_ds"
 		done <<< "$dataset_list"		
 	fi	
@@ -506,4 +531,8 @@ elif [[ "$clone_derivatives" == "True" ]]; then
 			clone_derivatives "$raw_ds" 
 		done <<< "$(echo ${success_print%,} | sed 's/,/\n/g')"
 	fi
+elif [[ "$push" == "True" ]]; then
+	while IFS= read -r raw_ds; do  
+		push "$raw_ds"
+	done <<< "$dataset_list"
 fi
