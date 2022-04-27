@@ -1,23 +1,25 @@
 #!/bin/bash
 
+#set -eu
+
 # Clone/update raw datasets and download necessary data for fmriprep/mriqc
 download_raw_ds () {
 	local raw_ds="$1"
 	local raw_corral_path="$OPENNEURO/raw/$raw_ds"
 	
 	if [[ ! -d "$raw_corral_path" ]]; then
-		datalad clone https://github.com/OpenNeuroDatasets/${raw_ds}.git "$raw_corral_path"
+		datalad clone https://github.com/OpenNeuroDatasets/"${raw_ds}".git "$raw_corral_path"
 
 		# Ensure permissions for the group
 		setfacl -R -m g:G-802037:rwX "$raw_corral_path"
-		find "$raw_corral_path" -type d | xargs setfacl -R -m d:g:G-802037:rwX
+		find "$raw_corral_path" -type d -print0 | xargs setfacl -R -m d:g:G-802037:rwX
 
-		cd "$raw_corral_path" 
+		cd "$raw_corral_path" || exit
 		find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
 			-exec datalad get {} +
 	else
 		# Update
-		cd "$raw_corral_path"				
+		cd "$raw_corral_path" || exit			
 		datalad update -s origin --merge
 		find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
 			-exec datalad get {} +
@@ -32,7 +34,7 @@ create_derivatives_ds () {
 	# to-do: fix reckless clone issue when original dataset doesn't download properly 
 	if [[ ! -d "$derivatives_inprocess_path" ]]; then
 		datalad create -c yoda "$derivatives_inprocess_path"
-		cd "$derivatives_inprocess_path"
+		cd "$derivatives_inprocess_path" || exit
 		git config receive.denyCurrentBranch updateInstead # Allow git pushes to checked out branch
 		rm CHANGELOG.md README.md code/README.md
 		datalad clone -d . https://github.com/ReproNim/containers.git code/containers
@@ -54,7 +56,7 @@ create_derivatives_ds () {
   
 		# Ensure permissions for the group
 		setfacl -R -m g:G-802037:rwX "$derivatives_inprocess_path"
-		find "$derivatives_inprocess_path" -type d | xargs setfacl -R -m d:g:G-802037:rwX
+		find "$derivatives_inprocess_path" -type d -print0 | xargs setfacl -R -m d:g:G-802037:rwX
 		
 		datalad save -m "Initialize dataset"
 	else
@@ -75,7 +77,7 @@ cheap_clone () {
 	fi
 
 	if [ -d "${loc}.aside/.git/annex/objects" ]; then
-	    git -C $loc annex init;
+	    git -C "$loc" annex init;
 	    mkdir -p "$loc/.git/annex/"
 	    mv "${loc}.aside/.git/annex/objects" "$loc/.git/annex/"
 	    git -C "$loc" annex fsck
@@ -97,18 +99,18 @@ setup_scratch_ds () {
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 	
 	cheap_clone "$raw_corral_path" "$raw_scratch_path"
-	cd "$raw_scratch_path"
+	cd "$raw_scratch_path" || exit
 	find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
 		-exec datalad get {} +	
 	
 	cheap_clone "$derivatives_inprocess_path" "$derivatives_scratch_path"
-	cd "$derivatives_scratch_path"
+	cd "$derivatives_scratch_path" || exit
 	datalad get .
 	datalad clone -d . "$raw_scratch_path" sourcedata/raw --reckless ephemeral
 	datalad clone -d . "$STAGING/containers" code/containers --reckless ephemeral
 	datalad clone -d . "$STAGING/templateflow" sourcedata/templateflow --reckless ephemeral
 	for sub_ds in "$STAGING"/templateflow/tpl*; do
-		datalad clone "$sub_ds" sourcedata/templateflow/$(basename "$sub_ds") --reckless ephemeral
+		datalad clone "$sub_ds" sourcedata/templateflow/"$(basename "$sub_ds")" --reckless ephemeral
 	done
 }
 
@@ -118,7 +120,7 @@ run_software () {
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}" 
 	local raw_path="$STAGING/raw/$raw_ds"
 	local fs_path="$derivatives_scratch_path/sourcedata/freesurfer"
-	cd "$derivatives_scratch_path"
+	cd "$derivatives_scratch_path" || exit
 
 	if [[ "$software" == "fmriprep" ]]; then
 		local walltime="48:00:00"
@@ -126,7 +128,7 @@ run_software () {
 		if [ -z "$subs_per_node" ]; then
 			local subs_per_node=4
 		fi
-		local mem_mb="$(( 150000 / $subs_per_node ))"
+		local mem_mb="$(( 150000 / subs_per_node ))"
 		local command=("--output-spaces" "MNI152NLin2009cAsym:res-2" "anat" "func" "fsaverage5" "--nthreads" "14" \
 			"--omp-nthreads" "7" "--skip-bids-validation" "--notrack" "--fs-license-file" "$fs_license" \
 				"--use-aroma" "--ignore" "slicetiming" "--output-layout" "bids" "--cifti-output" "--resource-monitor" \
@@ -147,7 +149,7 @@ run_software () {
 		if [ -z "$subs_per_node" ]; then
 			local subs_per_node=5
 		fi
-		local mem_mb="$(( 150 / $subs_per_node ))"
+		local mem_mb="$(( 150 / subs_per_node ))"
 		local command=("--nprocs" "11" "--ants-nthreads" "8" "--verbose-reports" "--dsname" "$raw_ds" "--ica" "--mem_gb" "$mem_mb")
 	fi
 
@@ -155,16 +157,17 @@ run_software () {
 		if [[ "$rerun" == "True" ]]; then
 			unset failed_joined
 			check_results "$raw_ds"
-			local all_subs=$( echo "$failed_joined" | sed 's/,/\n/g')
+			local all_subs="${failed_joined//,/$'\n'}"
 		elif [[ "$remaining" == "True" ]]; then
 			unset sub_joined
 			check_results "$raw_ds"
-			local all_subs=$( echo "$sub_joined" | sed 's/,/\n/g')
+			local all_subs="${sub_joined//,/$'\n'}"
 		else
-			local all_subs=$(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort)
+			local all_subs
+			all_subs=$(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort)
 		fi
 	else
-		local all_subs=$(echo "$all_subs_arg" | sed 's/,/\n/g')
+		local all_subs="${all_subs_arg//,/$'\n'}"
 	fi
 	
 	# Remove old work dirs
@@ -175,9 +178,9 @@ run_software () {
 	fi
 
 	if [[ "$rerun" == "True" ]]; then
-		cd "$derivatives_scratch_path/code/containers"
+		cd "$derivatives_scratch_path/code/containers" || exit
 		git-annex repair --force
-		cd "$derivatives_scratch_path"
+		cd "$derivatives_scratch_path" || exit
 		for sub in $all_subs; do
 			rm -rf "$derivatives_scratch_path/sub-${sub}"*
 		done
@@ -187,22 +190,22 @@ run_software () {
 		fi
 	fi
 	
-	datalad save -r -m "pre-run save"
+	datalad save -m "pre-run save"
 
 	export SINGULARITYENV_TEMPLATEFLOW_HOME="$derivatives_scratch_path/sourcedata/templateflow/"
 	export SINGULARITYENV_TEMPLATEFLOW_USE_DATALAD="true"
 	# Submit jobs via reproman in batches 
 	local count=0
-	echo "$all_subs" | xargs -n "$subs_per_job" echo | while read line; do 
+	echo "$all_subs" | xargs -n "$subs_per_job" echo | while read -r line; do 
 		((count++))
 
 		if [ "$part" != "$count" ]; then
 			continue
 		fi
 
-		local sub_list=$(echo "$line" | sed 's/ /,/g')
-		local processes=$(echo "$line" | awk '{ print NF }')
-		local nodes=$(( ($processes + $subs_per_node - 1) / $subs_per_node)) # round up
+		local sub_list="${line// /,}"
+		local processes; processes=$(echo "$line" | awk '{ print NF }')
+		local nodes=$(( (processes + subs_per_node - 1) / subs_per_node)) # round up
 		if [ "$nodes" -gt 2 ]; then
 			local queue="normal"
 		else
@@ -257,19 +260,18 @@ check_results () {
 	elif [[ "$software" == "fmriprep" ]]; then
 		local success_phrase="fMRIPrep finished successfully"
 	fi
-	local reproman_logs="$(ls -1d $derivatives_inprocess_path/.reproman/jobs/local/* | sort -nr)"
+	local reproman_logs; reproman_logs="$(find "$derivatives_inprocess_path/.reproman/jobs/local/" -maxdepth 1 -mindepth 1 | sort -nr)"
 	local sub_array
 	readarray -t sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort )
 	local success_sub_array=()
 	local failed_sub_array=()
-	local incomplete_sub_array=()
 	local runtime_array=()
 	
 	while IFS= read -r job_dir && [ ${#sub_array[@]} -gt 0 ]; do		
 		echo "$job_dir"
 		for stdout in "$job_dir"/stdout.*; do
-			local stderr=$(echo "$stdout" | sed 's/stdout/stderr/g')
-			local sub=$(head -n 10 "$stdout" | grep "\-\-participant-label" | sed -r 's/.*--participant-label \x27([^\x27]*)\x27.*/\1/g'01)
+			local stderr="${stdout//stdout/stderr}"
+			local sub; sub=$(head -n 10 "$stdout" | grep "\-\-participant-label" | sed -r 's/.*--participant-label \x27([^\x27]*)\x27.*/\1/g')
 			# Look for exact match in array
 			if [[ ${sub_array[*]} =~ (^|[[:space:]])"$sub"($|[[:space:]]) ]]; then
 				# Remove sub from array
@@ -290,13 +292,13 @@ check_results () {
 				fi
 				
 				# get runtime
-				start_time=$(head "$stdout" | sed -rn 's|.*([0-9]{2})([0-9]{2})([0-9]{2})-([0-9]{2}):([0-9]{2}):([0-9]{2}),.*|20\1-\2-\3 \4:\5:\6|p' )
-				end_time=$(tail -20 "$stdout" | sed -rn 's|.*([0-9]{2})([0-9]{2})([0-9]{2})-([0-9]{2}):([0-9]{2}):([0-9]{2}),.*|20\1-\2-\3 \4:\5:\6|p' | tail -n1 )
-				start_sec=$(date --date "$start_time" +%s)
-				end_sec=$(date --date "$end_time" +%s)
-				delta_sec=$((end_sec - start_sec))
-				delta=$(convertsecs $delta_sec)
-				sub_status=$(cat $(echo $stdout | sed 's/stdout/status/g'))
+				local start_time; start_time=$(head "$stdout" | sed -rn 's|.*([0-9]{2})([0-9]{2})([0-9]{2})-([0-9]{2}):([0-9]{2}):([0-9]{2}),.*|20\1-\2-\3 \4:\5:\6|p' )
+				local end_time; end_time=$(tail -20 "$stdout" | sed -rn 's|.*([0-9]{2})([0-9]{2})([0-9]{2})-([0-9]{2}):([0-9]{2}):([0-9]{2}),.*|20\1-\2-\3 \4:\5:\6|p' | tail -n1 )
+				local start_sec; start_sec=$(date --date "$start_time" +%s)
+				local end_sec; end_sec=$(date --date "$end_time" +%s)
+				local delta_sec; delta_sec=$((end_sec - start_sec))
+				local delta; delta=$(convertsecs $delta_sec)
+				local sub_status; sub_status=$(cat "${stdout//stdout/status}")
 				runtime_array+=("sub-${sub}: $delta $sub_status")
 				
 			fi
@@ -322,10 +324,10 @@ check_results () {
 	fi
 	
 	# Check all subject directories exist
-	local raw_sub_array derivatives_sub_array
-	readarray -t raw_sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
-	readarray -t derivatives_sub_array < <(find "$derivatives_inprocess_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
-	local unique_array=($(comm -3 <(printf "%s\n" "${raw_sub_array[@]}" | sort) <(printf "%s\n" "${derivatives_sub_array[@]}" | sort) | sort -n)) # print unique elements
+	local raw_sub_array derivatives_sub_array unique_array
+	mapfile -t raw_sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
+	mapfile -t derivatives_sub_array < <(find "$derivatives_inprocess_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
+	mapfile -t derivatives_sub_array < <(comm -3 <(printf "%s\n" "${raw_sub_array[@]}" | sort) <(printf "%s\n" "${derivatives_sub_array[@]}" | sort) | sort -n) # print unique elements
 	if [ ${#unique_array[@]} -gt 0 ]; then
 		local incomplete="True"
 		local unique_joined
@@ -384,7 +386,7 @@ clone_derivatives () {
 	datalad save -d "$derivatives_inprocess_path" -m "remove remora logs from ds"
 	
 	mv "$derivatives_inprocess_path" "$derivatives_final_path"
-	cd "$derivatives_final_path"
+	cd "$derivatives_final_path" || exit
 	git config --file .gitmodules --replace-all submodule.code/containers.url https://github.com/ReproNim/containers.git
 	git config --file .gitmodules --unset-all submodule.code/containers.datalad-url
 	git config --file .gitmodules --replace-all submodule.sourcedata/raw.url https://github.com/OpenNeuroDatasets/"$raw_ds".git
@@ -425,22 +427,22 @@ work_dir="$SCRATCH/work_dir/$software/"
 fs_license=$HOME/.freesurfer.txt # this should be in code/license
 
 # initialize flags
-while [[ "$#" > 0 ]]; do
-  case $1 in
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
 	--no-syn-sdc)
 		syn_sdc="False" ;;
 	--skull-strip-t1w)
-		skull_strip=$2; shift ;;
+		skull_strip="$2"; shift ;;
 	--sub-list)
-		all_subs_arg=$2; shift ;;
+		all_subs_arg="$2"; shift ;;
 	--subs-per-job)
-		subs_per_job=$2; shift ;;
+		subs_per_job="$2"; shift ;;
 	--subs-per-node)
-		subs_per_node=$2; shift ;;
+		subs_per_node="$2"; shift ;;
 	--dataset-file)
-		dataset_list=$(cat $2); shift ;;
+		dataset_list=$(cat "$2"); shift ;;
 	--dataset)
-		dataset_list=$(echo $2 | sed 's/,/\n/g'); shift ;;
+		dataset_list="${2//,/$'\n'}"; shift ;;
 	--dataset-all)
 		dataset_list=$(find "$STAGING"/derivatives/"$software"/ -name "ds*" -maxdepth 1 | sed -r 's/.*(ds......).*/\1/g') ;;
 	--skip-raw-download)
@@ -476,7 +478,7 @@ while [[ "$#" > 0 ]]; do
 		clone_derivatives="True"
 		download_create_run="False" ;;
 	--part)
-		part=$2; shift ;;
+		part="$2"; shift ;;
 	-x)
 		set -x; shift ;;
   esac
@@ -536,3 +538,4 @@ elif [[ "$push" == "True" ]]; then
 		push "$raw_ds"
 	done <<< "$dataset_list"
 fi
+
