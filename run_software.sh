@@ -12,7 +12,7 @@ download_raw_ds () {
 
 		# Ensure permissions for the group
 		setfacl -R -m g:G-802037:rwX "$raw_corral_path"
-		find "$raw_corral_path" -type d -print0 | xargs setfacl -R -m d:g:G-802037:rwX
+		find "$raw_corral_path" -type d -print0 | xargs --null setfacl -R -m d:g:G-802037:rwX
 
 		cd "$raw_corral_path" || exit
 		find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
@@ -56,7 +56,7 @@ create_derivatives_ds () {
   
 		# Ensure permissions for the group
 		setfacl -R -m g:G-802037:rwX "$derivatives_inprocess_path"
-		find "$derivatives_inprocess_path" -type d -print0 | xargs setfacl -R -m d:g:G-802037:rwX
+		find "$derivatives_inprocess_path" -type d -print0 | xargs --null setfacl -R -m d:g:G-802037:rwX
 		
 		datalad save -m "Initialize dataset"
 	else
@@ -72,20 +72,18 @@ cheap_clone () {
 	if [ -d "$loc" ]; then
 	    mv "$loc" "$loc.aside"
 		git clone "$url" "$loc"
+		if [ -d "${loc}.aside/.git/annex/objects" ]; then
+		    git -C "$loc" annex init;
+		    mkdir -p "$loc/.git/annex/"
+		    mv "${loc}.aside/.git/annex/objects" "$loc/.git/annex/"
+		    git -C "$loc" annex fsck
+		fi
+		if [ -d "$loc" ]; then
+			chmod -R 775 "$loc.aside"
+		    rm -rf "$loc.aside"
+		fi
 	else
 		datalad clone "$url" "$loc"
-	fi
-
-	if [ -d "${loc}.aside/.git/annex/objects" ]; then
-	    git -C "$loc" annex init;
-	    mkdir -p "$loc/.git/annex/"
-	    mv "${loc}.aside/.git/annex/objects" "$loc/.git/annex/"
-	    git -C "$loc" annex fsck
-	fi
-
-	if [ -d "$loc" ]; then
-		chmod -R 775 "$loc.aside"
-	    rm -rf "$loc.aside"
 	fi
 }
 
@@ -245,6 +243,9 @@ check_results () {
 	if [ -z "${fail_array+x}" ]; then
 		declare -ag fail_array=()
 	fi
+	if [ -z "${error_array+x}" ]; then
+		declare -ag error_array=()
+	fi
 	if [ -z "${incomplete_array+x}" ]; then
 		declare -ag incomplete_array=()
 	fi
@@ -259,6 +260,7 @@ check_results () {
 	readarray -t sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort )
 	local success_sub_array=()
 	local failed_sub_array=()
+	local error_sub_array=()
 	local runtime_array=()
 	
 	while IFS= read -r job_dir && [ ${#sub_array[@]} -gt 0 ]; do		
@@ -267,7 +269,7 @@ check_results () {
 			local stderr="${stdout//stdout/stderr}"
 			local sub; sub=$(head -n 10 "$stdout" | grep "\-\-participant-label" | sed -r 's/.*--participant-label \x27([^\x27]*)\x27.*/\1/g')
 			# Look for exact match in array
-			if [[ ${sub_array[*]} =~ (^|[[:space:]])"$sub"($|[[:space:]]) ]]; then
+			if [[ ${sub_array[@]+"${sub_array[@]}"} =~ (^|[[:space:]])"$sub"($|[[:space:]]) ]]; then
 				# Remove sub from array
 				for i in "${!sub_array[@]}";do
 					if [[ "${sub_array[$i]}" == "$sub" ]];then 
@@ -275,12 +277,21 @@ check_results () {
 						break
 					fi
 				done
-				if ! grep -q "$success_phrase" "$stdout" || grep -q "did not finish successfully" "$stdout" || grep -q "Error" "$stdout"; then
+				if ! grep -q "$success_phrase" "$stdout" || grep -q "did not finish successfully" "$stdout"; then
 					echo "$stdout (sub-$sub) failed "
 					failed_sub_array+=("$sub")
-				elif grep -q "Error" "$stderr"; then
-					echo "$stderr (sub-$sub) failed"
-					failed_sub_array+=("$sub")
+				elif grep -iq "Error" "$stderr"; then
+					echo "$stderr (sub-$sub) contains errors"
+					if [[ "$errors" == "True" ]]; then
+						grep -i "Error" "$stderr" | awk '!x[$0]++'
+					fi
+					error_sub_array+=("$sub")
+				elif grep -q "Error" "$stdout"; then
+					echo "$stdout (sub-$sub) contains errors "
+					if [[ "$errors" == "True" ]]; then
+						grep "Error" "$stdout" | awk '!x[$0]++'
+					fi
+					error_sub_array+=("$sub")
 				else
 					success_sub_array+=("$sub")
 				fi
@@ -297,6 +308,7 @@ check_results () {
 				
 			fi
 		done
+		echo
 	done <<< "$reproman_logs"
 	
 	if [ ${#success_sub_array[@]} -gt 0 ]; then
@@ -317,13 +329,24 @@ check_results () {
 		fi
 	fi
 	
+	if [ ${#error_sub_array[@]} -gt 0 ]; then
+		local error="True"
+		printf -v error_joined '%s,' "${error_sub_array[@]}"
+		if [[ "$check" == "True" ]]; then
+			echo "The following subjects contain errors: "
+			echo "${error_joined%,}"
+		fi
+	fi
+	
 	# Check all subject directories exist
 	local raw_sub_array derivatives_sub_array unique_array
 	mapfile -t raw_sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
-	mapfile -t derivatives_sub_array < <(find "$derivatives_inprocess_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
+	mapfile -t derivatives_sub_array < <(find "$derivatives_scratch_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
 	mapfile -t unique_array < <(comm -3 <(printf "%s\n" "${raw_sub_array[@]}" | sort) <(printf "%s\n" "${derivatives_sub_array[@]}" | sort) | sort -n) # print unique elements
+	
+	local incomplete="False"
 	if [ ${#unique_array[@]} -gt 0 ]; then
-		local incomplete="True"
+		incomplete="True"
 		local unique_joined
 		printf -v unique_joined '%s,' "${unique_array[@]}"
 		if [[ "$check" == "True" ]]; then
@@ -333,7 +356,7 @@ check_results () {
 	fi
 	
 	if [ ${#sub_array[@]} -gt 0 ]; then
-		local incomplete="True"
+		incomplete="True"
 		printf -v sub_joined '%s,' "${sub_array[@]}"
 		if [[ "$check" == "True" ]]; then
 			echo "The following subjects have not been run: "
@@ -341,11 +364,10 @@ check_results () {
 		fi
 	fi
 	
-	total_run_subs=$(bc -l <<< "( ${#success_sub_array[@]} + ${#failed_sub_array[@]} )" )
+	total_run_subs=$(bc -l <<< "( ${#success_sub_array[@]} + ${#failed_sub_array[@]} + ${#error_sub_array[@]} )" )
 	if [ ${#success_sub_array[@]} -eq 0 ]; then
 		success_percent=0
-	elif [ ${#failed_sub_array[@]} -eq 0 ]; then
-		local fail="False" 
+	elif [ ${#failed_sub_array[@]} -eq 0 ] && [ ${#error_sub_array[@]} -eq 0 ]; then
 		success_percent=100
 	else
 		success_percent=$(bc -l <<< "scale = 10; ( ${#success_sub_array[@]} / $total_run_subs ) * 100" )
@@ -354,9 +376,9 @@ check_results () {
 	
 	printf '%s\n' "${runtime_array[@]}"
 	
-	if [[ "$fail" == "True" ]]; then
+	if [ ${#failed_sub_array[@]} -gt 0 ] || [ ${#error_sub_array[@]} -eq 0 ]; then
 		fail_array+=("$raw_ds")
-	elif [[ "$incomplete" != "True" ]]; then
+	elif [[ "$incomplete" == "False" ]]; then
 		success_array+=("$raw_ds")
 	else
 		incomplete_array+=("$raw_ds")
@@ -426,6 +448,7 @@ push="False"
 remaining="False"
 rerun="False"
 check="False"
+errors="False"
 part="1"
 
 # initialize flags
@@ -478,6 +501,8 @@ while [[ "$#" -gt 0 ]]; do
 		check="True"
 		clone_derivatives="True"
 		download_create_run="False" ;;
+	--errors)
+		errors="True" ;;
 	--part)
 		part="$2"; shift ;;
 	-x)
@@ -522,11 +547,14 @@ elif [[ "$clone_derivatives" == "True" ]]; then
 		done <<< "$dataset_list"
 		printf -v success_print "%s," "${success_array[@]-}"
 		printf -v failed_print "%s," "${fail_array[@]-}"
+		printf -v error_print "%s," "${error_array[@]-}"
 		printf -v incomplete_print "%s," "${incomplete_array[@]-}"
 		echo -e "\nSuccess: "
 		echo "${success_print%,}"
 		echo -e "Failed: "
 		echo "${failed_print%,}"
+		echo -e "Error: "
+		echo "${error_print%,}"
 		echo -e "Incomplete: "
 		echo "${incomplete_print%,}"
 	else
