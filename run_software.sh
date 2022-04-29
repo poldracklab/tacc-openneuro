@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#set -eu
+set -eu
 
 # Clone/update raw datasets and download necessary data for fmriprep/mriqc
 download_raw_ds () {
@@ -60,7 +60,7 @@ create_derivatives_ds () {
 		
 		datalad save -m "Initialize dataset"
 	else
-		datalad save -d "$derivatives_inprocess_path"  
+		datalad save -d "$derivatives_inprocess_path" -m "ensure in_process copy is clean"
 	fi
 }
 
@@ -87,7 +87,6 @@ cheap_clone () {
 		chmod -R 775 "$loc.aside"
 	    rm -rf "$loc.aside"
 	fi
-
 }
 
 # Setup derivatives directory on scratch
@@ -140,7 +139,8 @@ run_software () {
 		if [[ -d "$fs_path" ]]; then
 			datalad unlock "$fs_path"/sub*/scripts/
 			find "$fs_path" -name "*IsRunning*" -delete
-			git commit -m "unlock freesurfer scripts"
+			git add -A
+			git diff-index --quiet HEAD || git commit -m "unlock freesurfer scripts"
 		fi
 		
 	elif [[ "$software" == "mriqc" ]]; then
@@ -179,26 +179,20 @@ run_software () {
 
 	if [[ "$rerun" == "True" ]]; then
 		cd "$derivatives_scratch_path/code/containers" || exit
-		git-annex repair --force
 		cd "$derivatives_scratch_path" || exit
 		for sub in $all_subs; do
 			rm -rf "$derivatives_scratch_path/sub-${sub}"*
 		done
-		if [[ "$software" == "fmriprep" ]]; then
-			rm -rf "$derivatives_scratch_path"/sourcedata/freesurfer/fsaverage*
-			rsync -tvrL "$OPENNEURO"/freesurfer/ds000001-freesurfer/fsaverage* sourcedata/freesurfer/
-		fi
 	fi
 	
-	datalad save -m "pre-run save"
+	datalad save -r -m "pre-run save"
 
 	export SINGULARITYENV_TEMPLATEFLOW_HOME="$derivatives_scratch_path/sourcedata/templateflow/"
 	export SINGULARITYENV_TEMPLATEFLOW_USE_DATALAD="true"
 	# Submit jobs via reproman in batches 
 	local count=0
 	echo "$all_subs" | xargs -n "$subs_per_job" echo | while read -r line; do 
-		((count++))
-
+		(( ++count ))
 		if [ "$part" != "$count" ]; then
 			continue
 		fi
@@ -235,7 +229,7 @@ convertsecs () {
 push () {
 	local raw_ds="$1"
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
-	datalad save -d "$derivatives_scratch_path"
+	datalad save -d "$derivatives_scratch_path" -m "pre-push save"
 	datalad push --to origin -d "$derivatives_scratch_path"
 }
 
@@ -244,15 +238,15 @@ check_results () {
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 	local raw_path="$OPENNEURO/raw/$raw_ds"
-		
-	if [ -z "$success_array" ]; then
-		success_array=()	
+	
+	if [ -z "${success_array+x}" ]; then
+		declare -ag success_array=()
 	fi
-	if [ -z "$fail_array" ]; then
-		fail_array=()
+	if [ -z "${fail_array+x}" ]; then
+		declare -ag fail_array=()
 	fi
-	if [ -z "$incomplete_array" ]; then
-		incomplete_array=()
+	if [ -z "${incomplete_array+x}" ]; then
+		declare -ag incomplete_array=()
 	fi
 	
 	if [[ "$software" == "mriqc" ]]; then
@@ -260,7 +254,7 @@ check_results () {
 	elif [[ "$software" == "fmriprep" ]]; then
 		local success_phrase="fMRIPrep finished successfully"
 	fi
-	local reproman_logs; reproman_logs="$(find "$derivatives_inprocess_path/.reproman/jobs/local/" -maxdepth 1 -mindepth 1 | sort -nr)"
+	local reproman_logs; reproman_logs="$(find "$derivatives_scratch_path/.reproman/jobs/local/" -maxdepth 1 -mindepth 1 | sort -nr)"
 	local sub_array
 	readarray -t sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort )
 	local success_sub_array=()
@@ -327,7 +321,7 @@ check_results () {
 	local raw_sub_array derivatives_sub_array unique_array
 	mapfile -t raw_sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
 	mapfile -t derivatives_sub_array < <(find "$derivatives_inprocess_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
-	mapfile -t derivatives_sub_array < <(comm -3 <(printf "%s\n" "${raw_sub_array[@]}" | sort) <(printf "%s\n" "${derivatives_sub_array[@]}" | sort) | sort -n) # print unique elements
+	mapfile -t unique_array < <(comm -3 <(printf "%s\n" "${raw_sub_array[@]}" | sort) <(printf "%s\n" "${derivatives_sub_array[@]}" | sort) | sort -n) # print unique elements
 	if [ ${#unique_array[@]} -gt 0 ]; then
 		local incomplete="True"
 		local unique_joined
@@ -376,8 +370,7 @@ clone_derivatives () {
 	local derivatives_final_path="$OPENNEURO/$software/${raw_ds}-${software}"
 	local raw_path="$STAGING/raw/$raw_ds"
 	
-	datalad save -d "$derivatives_scratch_path"
-	datalad push --to origin -d "$derivatives_scratch_path"
+	push "$raw_ds"
 	
 	# Move remora logs to corral
 	datalad unlock -d "$derivatives_inprocess_path" "$derivatives_inprocess_path"/remora*
@@ -391,6 +384,7 @@ clone_derivatives () {
 	git config --file .gitmodules --unset-all submodule.code/containers.datalad-url
 	git config --file .gitmodules --replace-all submodule.sourcedata/raw.url https://github.com/OpenNeuroDatasets/"$raw_ds".git
 	git config --file .gitmodules --unset-all submodule.sourcedata/raw.datalad-url
+	git config --file .gitmodules --replace-all submodule.sourcedata/templateflow.url https://github.com/templateflow/templateflow.git
 	git config --file .gitmodules --unset-all submodule.sourcedata/templateflow.datalad-url
 	git-annex lock
 	datalad save -r -m "change gitmodule urls to origin"
@@ -409,22 +403,30 @@ clone_derivatives () {
 # initialize variables
 user_email="jbwexler@tutanota.com"
 software="$1"
+STAGING="$SCRATCH/openneuro_derivatives"
+OPENNEURO="/corral-repl/utexas/poldracklab/data/OpenNeuro"
+work_dir="$SCRATCH/work_dir/$software"
+fs_license=$HOME/.freesurfer.txt # this should be in code/license
+
 syn_sdc="True"
 skull_strip="force"
-subs_per_job="100"
+subs_per_job="200"
 all_subs_arg=""
 subs_per_node=""
+dataset_list=""
 skip_raw_download="False"
 skip_create_derivatives="False"
 skip_run_software="False"
 skip_workdir_delete="False"
 skip_setup_scratch="False"
 download_create_run="True"
+clone_derivatives="False"
+ignore_check="False"
+push="False"
+remaining="False"
+rerun="False"
+check="False"
 part="1"
-STAGING="$SCRATCH/openneuro_derivatives"
-OPENNEURO="/corral-repl/utexas/poldracklab/data/OpenNeuro/"
-work_dir="$SCRATCH/work_dir/$software/"
-fs_license=$HOME/.freesurfer.txt # this should be in code/license
 
 # initialize flags
 while [[ "$#" -gt 0 ]]; do
@@ -462,13 +464,12 @@ while [[ "$#" -gt 0 ]]; do
 	--clone)
 		clone_derivatives="True"
 		download_create_run="False" ;;
-	--ignore)
-		ignore="True" ;;
+	--ignore-check)
+		ignore_check="True" ;;
 	--push)
 		download_create_run="False"
 		push="True" ;;
 	--remaining)
-		subs_per_job="2000"
 		remaining="True" ;;
 	--rerun)
 		skip_workdir_delete="True"
@@ -480,7 +481,7 @@ while [[ "$#" -gt 0 ]]; do
 	--part)
 		part="$2"; shift ;;
 	-x)
-		set -x; shift ;;
+		set -x ;;
   esac
   shift
 done
@@ -515,19 +516,22 @@ if [[ "$download_create_run" == "True" ]]; then
 		done <<< "$dataset_list"		
 	fi	
 elif [[ "$clone_derivatives" == "True" ]]; then
-	while IFS= read -r raw_ds; do  
-		check_results "$raw_ds"
-	done <<< "$dataset_list"
-	printf -v success_print "%s," "${success_array[@]}"
-	printf -v failed_print "%s," "${fail_array[@]}"
-	printf -v incomplete_print "%s," "${incomplete_array[@]}"
-	echo -e "\nSuccess: "
-	echo "${success_print%,}"
-	echo -e "Failed: "
-	echo "${failed_print%,}"
-	echo -e "Incomplete: "
-	echo "${incomplete_print%,}"
-	
+	if [[ "$ignore_check" != "True" ]]; then
+		while IFS= read -r raw_ds; do  
+			check_results "$raw_ds"
+		done <<< "$dataset_list"
+		printf -v success_print "%s," "${success_array[@]-}"
+		printf -v failed_print "%s," "${fail_array[@]-}"
+		printf -v incomplete_print "%s," "${incomplete_array[@]-}"
+		echo -e "\nSuccess: "
+		echo "${success_print%,}"
+		echo -e "Failed: "
+		echo "${failed_print%,}"
+		echo -e "Incomplete: "
+		echo "${incomplete_print%,}"
+	else
+		success_print="$dataset_list"
+	fi
 	if [[ "$check" != "True" ]]; then
 		while IFS= read -r raw_ds; do  
 			clone_derivatives "$raw_ds" 
