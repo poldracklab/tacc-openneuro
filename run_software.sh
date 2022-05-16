@@ -22,7 +22,7 @@ download_raw_ds () {
 		cd "$raw_corral_path" || exit			
 		datalad update -s origin --merge
 		find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
-			-exec datalad get {} +
+			-exec datalad get {} + 
 	fi
 }
 
@@ -95,7 +95,12 @@ setup_scratch_ds () {
 	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 	
-	cheap_clone "$raw_corral_path" "$raw_scratch_path"
+	datalad save -d "$derivatives_inprocess_path" -m "pre-setup_scratch_ds"
+	if [[ "$skip_raw_clone" == "True" ]]; then
+		datalad update -d "$raw_scratch_path" -s origin --merge	
+	else
+		cheap_clone "$raw_corral_path" "$raw_scratch_path"
+	fi
 	cd "$raw_scratch_path" || exit
 	find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
 		-exec datalad get {} +	
@@ -134,12 +139,6 @@ run_software () {
 			command+=("--use-syn-sdc")
 			command+=("warn")
 		fi
-		if [[ -d "$fs_path" ]]; then
-			datalad unlock "$fs_path"/sub*/scripts/
-			find "$fs_path" -name "*IsRunning*" -delete
-			git add -A
-			git diff-index --quiet HEAD || git commit -m "unlock freesurfer scripts"
-		fi
 		
 	elif [[ "$software" == "mriqc" ]]; then
 		local walltime="8:00:00"
@@ -166,6 +165,17 @@ run_software () {
 		fi
 	else
 		local all_subs="${all_subs_arg//,/$'\n'}"
+	fi
+	
+	if [[ -d "$fs_path" ]]; then
+		for sub in $all_subs; do
+			if [[ -d "$fs_path/sub-${sub}" ]]; then
+				datalad unlock "$fs_path/sub-${sub}"
+				find "$fs_path/sub-${sub}" -name "*IsRunning*" -delete
+			fi
+		done
+		git add -A
+		git diff-index --quiet HEAD || git commit -m "unlock freesurfer"
 	fi
 	
 	# Remove old work dirs
@@ -227,7 +237,7 @@ convertsecs () {
 push () {
 	local raw_ds="$1"
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
-	datalad save -d "$derivatives_scratch_path" -m "pre-push save"
+	datalad save -d "$derivatives_scratch_path" -m "pre-push save (scratch)"
 	datalad push --to origin -d "$derivatives_scratch_path"
 }
 
@@ -286,7 +296,7 @@ check_results () {
 						grep -i "Error" "$stderr" | awk '!x[$0]++'
 					fi
 					error_sub_array+=("$sub")
-				elif grep -q "Error" "$stdout"; then
+				elif grep "Error" "$stdout" | grep -v "Proxy Error" | grep -v "Error reading from remote server" | grep -qv "Internal Server Error"; then
 					echo "$stdout (sub-$sub) contains errors "
 					if [[ "$errors" == "True" ]]; then
 						grep "Error" "$stdout" | awk '!x[$0]++'
@@ -342,7 +352,7 @@ check_results () {
 	local raw_sub_array derivatives_sub_array unique_array
 	mapfile -t raw_sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
 	mapfile -t derivatives_sub_array < <(find "$derivatives_scratch_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
-	mapfile -t unique_array < <(comm -3 <(printf "%s\n" "${raw_sub_array[@]}" | sort) <(printf "%s\n" "${derivatives_sub_array[@]}" | sort) | sort -n) # print unique elements
+	mapfile -t unique_array < <(comm -3 <(printf "%s\n" "${raw_sub_array[@]}" | sort) <(printf "%s\n" "${derivatives_sub_array[@]-}" | sort) | sort -n) # print unique elements
 	
 	local incomplete="False"
 	if [ ${#unique_array[@]} -gt 0 ]; then
@@ -374,15 +384,23 @@ check_results () {
 	fi
 	echo "${success_percent:0:4}% (${#success_sub_array[@]}/$total_run_subs) of attempted subjects were successful."
 	
-	printf '%s\n' "${runtime_array[@]}"
+	printf '%s\n' "${runtime_array[@]-}"
 	
-	if [ ${#failed_sub_array[@]} -gt 0 ] || [ ${#error_sub_array[@]} -eq 0 ]; then
+	if [ ${#failed_sub_array[@]} -gt 0 ]; then
 		fail_array+=("$raw_ds")
+	elif [ ${#error_sub_array[@]} -gt 0 ]; then
+		error_array+=("$raw_ds")
 	elif [[ "$incomplete" == "False" ]]; then
 		success_array+=("$raw_ds")
 	else
 		incomplete_array+=("$raw_ds")
 	fi		
+	
+	if [[ "$purge" == "True" ]]; then
+		for sub in "${success_sub_array[@]-}"; do
+			rm -rf "$work_dir/${raw_ds}_sub-$sub"
+		done
+	fi
 }
 
 clone_derivatives () {
@@ -395,10 +413,12 @@ clone_derivatives () {
 	push "$raw_ds"
 	
 	# Move remora logs to corral
-	datalad unlock -d "$derivatives_inprocess_path" "$derivatives_inprocess_path"/remora*
-	mkdir "$OPENNEURO/logs/$software/remora/${raw_ds}-${software}-remora/"
-	mv "$derivatives_inprocess_path"/remora* "$OPENNEURO/logs/$software/remora/${raw_ds}-${software}-remora/"
-	datalad save -d "$derivatives_inprocess_path" -m "remove remora logs from ds"
+	if compgen -G "$derivatives_inprocess_path/remora*"; then
+		datalad unlock -d "$derivatives_inprocess_path" "$derivatives_inprocess_path"/remora*
+		mkdir -p "$OPENNEURO/logs/$software/remora/${raw_ds}-${software}-remora/"
+		mv "$derivatives_inprocess_path"/remora* "$OPENNEURO/logs/$software/remora/${raw_ds}-${software}-remora/"
+		datalad save -d "$derivatives_inprocess_path" -m "remove remora logs from ds"
+	fi
 	
 	mv "$derivatives_inprocess_path" "$derivatives_final_path"
 	cd "$derivatives_final_path" || exit
@@ -416,6 +436,10 @@ clone_derivatives () {
 	if [[ -d "$derivatives_scratch_path_old" ]]; then
 		chmod -R 775 "$derivatives_scratch_path_old"
 		rm -rf "$derivatives_scratch_path_old"
+	fi
+	if [[ "$software" == "fmriprep" ]]; then
+		chmod -R 775 "$raw_path"
+		rm -rf "$raw_path"
 	fi
 	mv -f "$derivatives_scratch_path" "$derivatives_scratch_path_old"
 	rm -rf "$SCRATCH/work_dir/$software/$raw_ds"*
@@ -442,6 +466,7 @@ skip_run_software="False"
 skip_workdir_delete="False"
 skip_setup_scratch="False"
 download_create_run="True"
+skip_raw_clone="False"
 clone_derivatives="False"
 ignore_check="False"
 push="False"
@@ -449,6 +474,7 @@ remaining="False"
 rerun="False"
 check="False"
 errors="False"
+purge="False"
 part="1"
 
 # initialize flags
@@ -484,6 +510,8 @@ while [[ "$#" -gt 0 ]]; do
 		skip_setup_scratch="True" ;;
 	--skip-setup-scratch)
 		skip_setup_scratch="True" ;;
+	--skip-raw-clone)
+		skip_raw_clone="True" ;;
 	--clone)
 		clone_derivatives="True"
 		download_create_run="False" ;;
@@ -503,6 +531,8 @@ while [[ "$#" -gt 0 ]]; do
 		download_create_run="False" ;;
 	--errors)
 		errors="True" ;;
+	--purge)
+		purge="True" ;;
 	--part)
 		part="$2"; shift ;;
 	-x)
@@ -557,13 +587,14 @@ elif [[ "$clone_derivatives" == "True" ]]; then
 		echo "${error_print%,}"
 		echo -e "Incomplete: "
 		echo "${incomplete_print%,}"
+		clone_list="$(echo ${success_print%,} | sed 's/,/\n/g')"
 	else
-		success_print="$dataset_list"
+		clone_list="$dataset_list"
 	fi
 	if [[ "$check" != "True" ]]; then
 		while IFS= read -r raw_ds; do  
 			clone_derivatives "$raw_ds" 
-		done <<< "$(echo ${success_print%,} | sed 's/,/\n/g')"
+		done <<< "$clone_list"
 	fi
 elif [[ "$push" == "True" ]]; then
 	while IFS= read -r raw_ds; do  
