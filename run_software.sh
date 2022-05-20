@@ -265,7 +265,13 @@ check_results () {
 	elif [[ "$software" == "fmriprep" ]]; then
 		local success_phrase="fMRIPrep finished successfully"
 	fi
-	local reproman_logs; reproman_logs="$(find "$derivatives_scratch_path/.reproman/jobs/local/" -maxdepth 1 -mindepth 1 | sort -nr)"
+	
+	local reproman_logs
+	if [[ "$check_corral" == "True" ]]; then
+		reproman_logs="$(find "$derivatives_inprocess_path/.reproman/jobs/local/" -maxdepth 1 -mindepth 1 | sort -nr)"
+	else
+		reproman_logs="$(find "$derivatives_scratch_path/.reproman/jobs/local/" -maxdepth 1 -mindepth 1 | sort -nr)"
+	fi
 	local sub_array
 	readarray -t sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort )
 	local success_sub_array=()
@@ -445,6 +451,19 @@ clone_derivatives () {
 	rm -rf "$SCRATCH/work_dir/$software/$raw_ds"*
 }
 
+publish () {
+	local raw_ds="$1"
+	local derivatives_final_path="$OPENNEURO/$software/${raw_ds}-${software}"
+	
+	source /home1/03201/jbwexler/scripts/export_aws_keys.sh
+	cd "$derivatives_final_path"
+	git-annex initremote openneuro-derivatives type=S3 bucket=openneuro-derivatives exporttree=yes versioning=yes partsize=1GiB encryption=none \
+		fileprefix="${software}"/"${raw_ds}-${software}"/ autoenable=true publicurl=https://openneuro-derivatives.s3.amazonaws.com public=yes
+	git annex export main --to openneuro-derivatives
+	git annex enableremote openneuro-derivatives publicurl=https://openneuro-derivatives.s3.amazonaws.com
+	datalad create-sibling-github -d . OpenNeuroDerivatives/"${raw_ds}-${software}" --publish-depends openneuro-derivatives
+	datalad push --to github
+}
 
 # initialize variables
 user_email="jbwexler@tutanota.com"
@@ -473,8 +492,10 @@ push="False"
 remaining="False"
 rerun="False"
 check="False"
+check_corral="False"
 errors="False"
 purge="False"
+publish="False"
 part="1"
 
 # initialize flags
@@ -495,7 +516,7 @@ while [[ "$#" -gt 0 ]]; do
 	--dataset)
 		dataset_list="${2//,/$'\n'}"; shift ;;
 	--dataset-all)
-		dataset_list=$(find "$STAGING"/derivatives/"$software"/ -name "ds*" -maxdepth 1 | sed -r 's/.*(ds......).*/\1/g') ;;
+		dataset_list=$(find "$STAGING"/derivatives/"$software"/ -maxdepth 1 -name "ds*" | sed -r 's/.*(ds......).*/\1/g') ;;
 	--skip-raw-download)
 		skip_raw_download="True" ;;
 	--skip-create-derivatives)
@@ -529,12 +550,20 @@ while [[ "$#" -gt 0 ]]; do
 		check="True"
 		clone_derivatives="True"
 		download_create_run="False" ;;
+	--check-corral)
+		check="True"
+		clone_derivatives="True"
+		download_create_run="False"
+		check_corral="True" ;;
 	--errors)
 		errors="True" ;;
 	--purge)
 		purge="True" ;;
 	--part)
 		part="$2"; shift ;;
+	--publish)
+		download_create_run="False"
+		publish="True" ;;
 	-x)
 		set -x ;;
   esac
@@ -600,5 +629,10 @@ elif [[ "$push" == "True" ]]; then
 	while IFS= read -r raw_ds; do  
 		push "$raw_ds"
 	done <<< "$dataset_list"
+elif [[ "$publish" == "True" ]]; then
+	while IFS= read -r raw_ds; do  
+		publish "$raw_ds"
+	done <<< "$dataset_list"
 fi
+
 
