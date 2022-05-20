@@ -51,7 +51,11 @@ create_derivatives_ds () {
 			local fs_path="$OPENNEURO/freesurfer/${raw_ds}-freesurfer"
 			if [[ -d "$fs_path" ]]; then
 				rsync -tvrL "$fs_path/" "$derivatives_inprocess_path/sourcedata/freesurfer/"
+			else
+				rsync -tvrL "$OPENNEURO"/freesurfer/ds000001-freesurfer/fsaverage* "$derivatives_inprocess_path/sourcedata/freesurfer/"
 			fi
+			find "$derivatives_inprocess_path"/sourcedata/freesurfer/fsaverage* -exec touch -h {} + 
+			
 		fi
   
 		# Ensure permissions for the group
