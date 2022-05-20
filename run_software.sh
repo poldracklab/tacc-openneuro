@@ -108,11 +108,11 @@ setup_scratch_ds () {
 	cheap_clone "$derivatives_inprocess_path" "$derivatives_scratch_path"
 	cd "$derivatives_scratch_path" || exit
 	datalad get .
-	datalad clone -d . "$raw_scratch_path" sourcedata/raw --reckless ephemeral
-	datalad clone -d . "$STAGING/containers" code/containers --reckless ephemeral
-	datalad clone -d . "$STAGING/templateflow" sourcedata/templateflow --reckless ephemeral
+	datalad clone -d . --reckless ephemeral "$raw_scratch_path" sourcedata/raw
+	datalad clone -d . --reckless ephemeral "$STAGING/containers" code/containers
+	datalad clone -d . --reckless ephemeral "$STAGING/templateflow" sourcedata/templateflow
 	for sub_ds in "$STAGING"/templateflow/tpl*; do
-		datalad clone "$sub_ds" sourcedata/templateflow/"$(basename "$sub_ds")" --reckless ephemeral
+		datalad clone "$sub_ds" --reckless ephemeral sourcedata/templateflow/"$(basename "$sub_ds")"
 	done
 }
 
