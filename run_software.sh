@@ -411,6 +411,12 @@ check_results () {
 			rm -rf "$work_dir/${raw_ds}_sub-$sub"
 		done
 	fi
+	if [[ "$tar" == "True" ]]; then
+		for sub in "${failed_sub_array[@]-}"; do
+			tar -cvf "$work_dir/${raw_ds}_sub-$sub".tar "$work_dir/${raw_ds}_sub-$sub" 
+			rm -rf "$work_dir/${raw_ds}_sub-$sub"
+		done
+	fi
 }
 
 clone_derivatives () {
@@ -499,6 +505,7 @@ check="False"
 check_corral="False"
 errors="False"
 purge="False"
+tar="False"
 publish="False"
 part="1"
 
@@ -563,6 +570,8 @@ while [[ "$#" -gt 0 ]]; do
 		errors="True" ;;
 	--purge)
 		purge="True" ;;
+	--tar)
+		tar="True" ;;
 	--part)
 		part="$2"; shift ;;
 	--publish)
