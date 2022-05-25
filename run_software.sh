@@ -194,6 +194,9 @@ run_software () {
 		cd "$derivatives_scratch_path" || exit
 		for sub in $all_subs; do
 			rm -rf "$derivatives_scratch_path/sub-${sub}"*
+			if [[ -f "$work_dir/${raw_ds}_sub-${sub}".tar ]]; then
+				tar -xvf "$work_dir/${raw_ds}_sub-${sub}".tar
+			fi
 		done
 	fi
 	
