@@ -106,12 +106,17 @@ setup_scratch_ds () {
 		cheap_clone "$raw_corral_path" "$raw_scratch_path"
 	fi
 	cd "$raw_scratch_path" || exit
-	find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
-		-exec datalad get {} +	
+	for sub in $all_subs; do
+		find "$sub"/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
+			-exec datalad get {} +	
+	done
 	
 	cheap_clone "$derivatives_inprocess_path" "$derivatives_scratch_path"
 	cd "$derivatives_scratch_path" || exit
-	datalad get .
+	datalad get sourcedata/freesurfer/fsaverage*
+	for sub in $all_subs; do
+		datalad get sourcedata/freesurfer/"$sub"
+	done
 	datalad clone -d . --reckless ephemeral "$raw_scratch_path" sourcedata/raw
 	datalad clone -d . --reckless ephemeral "$STAGING/containers" code/containers
 	datalad clone -d . --reckless ephemeral "$STAGING/templateflow" sourcedata/templateflow
