@@ -451,16 +451,12 @@ clone_derivatives () {
 	datalad save -r -m "change gitmodule urls to origin"
 	datalad install . -r
 	
-	local derivatives_scratch_path_old="$STAGING/derivatives/$software/old/${raw_ds}-${software}"
-	if [[ -d "$derivatives_scratch_path_old" ]]; then
-		chmod -R 775 "$derivatives_scratch_path_old"
-		rm -rf "$derivatives_scratch_path_old"
-	fi
 	if [[ "$software" == "fmriprep" ]]; then
 		chmod -R 775 "$raw_path"
 		rm -rf "$raw_path"
 	fi
-	mv -f "$derivatives_scratch_path" "$derivatives_scratch_path_old"
+	chmod -R 775 "$derivatives_scratch_path"
+	rm -rf "$derivatives_scratch_path"
 	rm -rf "$SCRATCH/work_dir/$software/$raw_ds"*
 }
 
