@@ -1,6 +1,6 @@
 * annex.backend=MD5E
 **/.git* annex.largefiles=nothing
-**/.reproman* annex.largefiles=nothing
+**/.reproman/** annex.largefiles=largerthan=40kb
 *.tsv annex.largefiles=largerthan=40kb
 *.json annex.largefiles=largerthan=40kb
 *.bvec annex.largefiles=largerthan=40kb

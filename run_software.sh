@@ -2,6 +2,26 @@
 
 set -eu
 
+get_subs () {
+	local raw_ds="$1"
+	local raw_corral_path="$OPENNEURO/raw/$raw_ds"
+	if [ -z "$all_subs_arg" ]; then
+		if [[ "$rerun" == "True" ]]; then
+			unset failed_joined
+			check_results "$raw_ds"
+			all_subs="${failed_joined//,/$'\n'}"
+		elif [[ "$remaining" == "True" ]]; then
+			unset sub_joined
+			check_results "$raw_ds"
+			all_subs="${sub_joined//,/$'\n'}"
+		else
+			all_subs=$(find "$raw_corral_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort)
+		fi
+	else
+		all_subs="${all_subs_arg//,/$'\n'}"
+	fi
+}
+
 # Clone/update raw datasets and download necessary data for fmriprep/mriqc
 download_raw_ds () {
 	local raw_ds="$1"
@@ -98,6 +118,7 @@ setup_scratch_ds () {
 	local raw_scratch_path="$STAGING/raw/$raw_ds"
 	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
+	get_subs "$raw_ds"
 	
 	datalad save -d "$derivatives_inprocess_path" -m "pre-setup_scratch_ds"
 	if [[ "$skip_raw_clone" == "True" ]]; then
@@ -107,21 +128,25 @@ setup_scratch_ds () {
 	fi
 	cd "$raw_scratch_path" || exit
 	for sub in $all_subs; do
-		find "$sub"/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
-			-exec datalad get {} +	
+		if [ -d "sub-${sub}" ]; then
+			find "sub-${sub}"/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
+				-exec datalad get {} +	
+		fi
 	done
 	
 	cheap_clone "$derivatives_inprocess_path" "$derivatives_scratch_path"
 	cd "$derivatives_scratch_path" || exit
 	datalad get sourcedata/freesurfer/fsaverage*
 	for sub in $all_subs; do
-		datalad get sourcedata/freesurfer/"$sub"
+		if [ -d sourcedata/freesurfer/sub-"${sub}" ]; then
+			datalad get sourcedata/freesurfer/sub-"${sub}"
+		fi
 	done
 	datalad clone -d . --reckless ephemeral "$raw_scratch_path" sourcedata/raw
 	datalad clone -d . --reckless ephemeral "$STAGING/containers" code/containers
 	datalad clone -d . --reckless ephemeral "$STAGING/templateflow" sourcedata/templateflow
 	for sub_ds in "$STAGING"/templateflow/tpl*; do
-		datalad clone "$sub_ds" --reckless ephemeral sourcedata/templateflow/"$(basename "$sub_ds")"
+		datalad clone  --reckless ephemeral -d . "$sub_ds" sourcedata/templateflow/"$(basename "$sub_ds")"
 	done
 }
 
@@ -131,6 +156,8 @@ run_software () {
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}" 
 	local raw_path="$STAGING/raw/$raw_ds"
 	local fs_path="$derivatives_scratch_path/sourcedata/freesurfer"
+	get_subs "$raw_ds"
+	
 	cd "$derivatives_scratch_path" || exit
 
 	if [[ "$software" == "fmriprep" ]]; then
@@ -158,23 +185,6 @@ run_software () {
 		local mem_mb="$(( 150 / subs_per_node ))"
 		local command=("--nprocs" "11" "--ants-nthreads" "8" "--verbose-reports" "--dsname" "$raw_ds" "--ica" "--mem_gb" "$mem_mb")
 	fi
-
-	if [ -z "$all_subs_arg" ]; then
-		if [[ "$rerun" == "True" ]]; then
-			unset failed_joined
-			check_results "$raw_ds"
-			local all_subs="${failed_joined//,/$'\n'}"
-		elif [[ "$remaining" == "True" ]]; then
-			unset sub_joined
-			check_results "$raw_ds"
-			local all_subs="${sub_joined//,/$'\n'}"
-		else
-			local all_subs
-			all_subs=$(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort)
-		fi
-	else
-		local all_subs="${all_subs_arg//,/$'\n'}"
-	fi
 	
 	if [[ -d "$fs_path" ]]; then
 		for sub in $all_subs; do
@@ -195,12 +205,14 @@ run_software () {
 	fi
 
 	if [[ "$rerun" == "True" ]]; then
-		cd "$derivatives_scratch_path/code/containers" || exit
 		cd "$derivatives_scratch_path" || exit
 		for sub in $all_subs; do
-			rm -rf "$derivatives_scratch_path/sub-${sub}"*
+			if [[ -d "$derivatives_scratch_path/sub-${sub}" ]]; then
+				rm -rf "$derivatives_scratch_path/sub-${sub}"*
+			fi
 			if [[ -f "$work_dir/${raw_ds}_sub-${sub}".tar ]]; then
-				tar -xvf "$work_dir/${raw_ds}_sub-${sub}".tar
+				tar -xvf "$work_dir/${raw_ds}_sub-${sub}".tar -C "$work_dir" && rm -rf "$work_dir/${raw_ds}_sub-${sub}".tar
+				find "$work_dir/${raw_ds}_sub-${sub}" -type f -exec touch {} +
 			fi
 		done
 	fi
@@ -434,7 +446,7 @@ clone_derivatives () {
 	local derivatives_final_path="$OPENNEURO/$software/${raw_ds}-${software}"
 	local raw_path="$STAGING/raw/$raw_ds"
 	
-	push "$raw_ds"
+	push "$raw_ds"	
 	
 	# Move remora logs to corral
 	if compgen -G "$derivatives_inprocess_path/remora*"; then
@@ -463,6 +475,21 @@ clone_derivatives () {
 	chmod -R 775 "$derivatives_scratch_path"
 	rm -rf "$derivatives_scratch_path"
 	rm -rf "$SCRATCH/work_dir/$software/$raw_ds"*
+}
+
+group () {
+	local raw_ds="$1"
+	local derivatives_final_path="$OPENNEURO/$software/${raw_ds}-${software}"
+	local raw_path="$OPENNEURO/raw/$raw_ds"
+	
+	if [[ ! -f "$derivatives_final_path/group_T1w.html" ]]; then
+		echo "$raw_ds"
+		download_raw_ds "$raw_ds"
+		cd "$derivatives_final_path" || exit
+		mriqc "$raw_path" . group -w "$OPENNEURO"/mriqc/work/"$raw_ds" || exit
+		datalad save -m "group report"
+	fi
+
 }
 
 publish () {
@@ -512,6 +539,7 @@ purge="False"
 tar="False"
 publish="False"
 part="1"
+group="False"
 
 # initialize flags
 while [[ "$#" -gt 0 ]]; do
@@ -581,6 +609,13 @@ while [[ "$#" -gt 0 ]]; do
 	--publish)
 		download_create_run="False"
 		publish="True" ;;
+	--group)
+		group="True"
+		download_create_run="False" ;;
+	--group-all)
+		dataset_list=$(find "$OPENNEURO"/mriqc/ -maxdepth 1 -name "ds*" | sed -r 's/.*(ds......).*/\1/g')
+		download_create_run="False"
+		group="True" ;;
 	-x)
 		set -x ;;
   esac
@@ -594,14 +629,21 @@ fi
 
 # run full pipeline
 if [[ "$download_create_run" == "True" ]]; then
+	while IFS= read -r raw_ds; do  
+		if [ -d "$STAGING/derivatives/$software/${raw_ds}-${software}" ]; then
+			push "$raw_ds"
+		fi
+	done <<< "$dataset_list"	
 	if [[ "$skip_raw_download" == "False" ]]; then
 		while IFS= read -r raw_ds; do  
 			download_raw_ds "$raw_ds"
 		done <<< "$dataset_list"
 	fi
 	if [[ "$skip_create_derivatives" == "False" ]]; then
-		rsync -av "$OPENNEURO/software/containers" "$STAGING"
-		rsync -av "$OPENNEURO/software/templateflow" "$STAGING"
+		rsync -av "$OPENNEURO/software/containers" "$STAGING" --include ".*"
+		rsync -av "$OPENNEURO/software/templateflow" "$STAGING" --include ".*"
+		find "$STAGING/containers" -exec touch -h {} +
+		find "$STAGING/templateflow" -exec touch -h {} +
 		while IFS= read -r raw_ds; do  
 			create_derivatives_ds "$raw_ds"
 		done <<< "$dataset_list"	
@@ -610,7 +652,7 @@ if [[ "$download_create_run" == "True" ]]; then
 		while IFS= read -r raw_ds; do  
 			setup_scratch_ds "$raw_ds"
 		done <<< "$dataset_list"		
-	fi	
+	fi			
 	if [[ "$skip_run_software" == "False" ]]; then
 		while IFS= read -r raw_ds; do  
 			run_software "$raw_ds"
@@ -649,6 +691,10 @@ elif [[ "$push" == "True" ]]; then
 elif [[ "$publish" == "True" ]]; then
 	while IFS= read -r raw_ds; do  
 		publish "$raw_ds"
+	done <<< "$dataset_list"
+elif [[ "$group" == "True" ]]; then
+	while IFS= read -r raw_ds; do  
+		group "$raw_ds"
 	done <<< "$dataset_list"
 fi
 
