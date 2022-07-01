@@ -57,6 +57,9 @@ create_derivatives_ds () {
 		cd "$derivatives_inprocess_path" || exit
 		git config receive.denyCurrentBranch updateInstead # Allow git pushes to checked out branch
 		rm CHANGELOG.md README.md code/README.md
+		cp /work/03201/jbwexler/frontera/tacc-openneuro/README_"${software}".md "$ds"/README.md
+		sed -i "s/ds000000/${raw_ds:0:8}/g" "$raw_ds"/README.md
+		
 		datalad clone -d . https://github.com/ReproNim/containers.git code/containers
 		datalad clone -d . https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
 		mkdir sourcedata
