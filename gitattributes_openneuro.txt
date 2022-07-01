@@ -6,6 +6,7 @@
 *.bvec annex.largefiles=largerthan=40kb
 *.bval annex.largefiles=largerthan=40kb
 README annex.largefiles=nothing
+README.md annex.largefiles=nothing
 CHANGES annex.largefiles=nothing
 dataset_description.json annex.largefiles=nothing
 desc-aparcaseg_dseg.tsv annex.largefiles=nothing
