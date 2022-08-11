@@ -9,7 +9,7 @@ get_subs () {
 		if [[ "$rerun" == "True" ]]; then
 			unset failed_joined
 			check_results "$raw_ds"
-			all_subs="${failed_joined//,/$'\n'}"
+			all_subs="${failed_joined[@]//,/$'\n'}"
 		elif [[ "$remaining" == "True" ]]; then
 			unset sub_joined
 			check_results "$raw_ds"
@@ -50,6 +50,7 @@ download_raw_ds () {
 create_derivatives_ds () {
 	local raw_ds="$1"
 	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
+	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 
 	# to-do: fix reckless clone issue when original dataset doesn't download properly 
 	if [[ ! -d "$derivatives_inprocess_path" ]]; then
@@ -57,7 +58,6 @@ create_derivatives_ds () {
 		cd "$derivatives_inprocess_path" || exit
 		git config receive.denyCurrentBranch updateInstead # Allow git pushes to checked out branch
 		rm CHANGELOG.md README.md code/README.md
-		sed -i "s/ds000000/${raw_ds:0:8}/g" "$raw_ds"/README.md
 		
 		datalad clone -d . https://github.com/ReproNim/containers.git code/containers
 		datalad clone -d . https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
@@ -65,9 +65,11 @@ create_derivatives_ds () {
 		datalad clone -d . https://github.com/OpenNeuroDatasets/"${raw_ds}".git sourcedata/raw
 		datalad clone -d . https://github.com/templateflow/templateflow.git sourcedata/templateflow
   
-		cp code/tacc-openneuro/README_"${software}".md "$ds"/README.md
+		cp code/tacc-openneuro/README_"${software}".md README.md
 		cp code/tacc-openneuro/gitattributes_openneuro.txt .gitattributes
 		cp code/tacc-openneuro/gitattributes_datalad_openneuro.txt .datalad/.gitattributes
+		sed -i "s/ds000000/${raw_ds:0:8}/g" README.md
+		
 
 		if [[ "$software" == "fmriprep" ]]; then
 			# Look for existing freesurfer derivatives
@@ -85,6 +87,7 @@ create_derivatives_ds () {
 		setfacl -R -m g:G-802037:rwX "$derivatives_inprocess_path"
 		find "$derivatives_inprocess_path" -type d -print0 | xargs --null setfacl -R -m d:g:G-802037:rwX
 		
+		datalad siblings add -s scratch --url "$derivatives_scratch_path"	
 		datalad save -m "Initialize dataset"
 	else
 		datalad save -d "$derivatives_inprocess_path" -r -m "ensure in_process copy is clean"
@@ -141,8 +144,12 @@ setup_scratch_ds () {
 	
 	cheap_clone "$derivatives_inprocess_path" "$derivatives_scratch_path"
 	cd "$derivatives_scratch_path" || exit
-	datalad get sourcedata/freesurfer/fsaverage*
-	datalad get .reproman
+	if [[ -d "sourcedata/freesurfer" ]]; then
+		datalad get sourcedata/freesurfer/fsaverage*
+	fi
+	if [[ -d ".reproman" ]]; then
+		datalad get .reproman
+	fi
 	for sub in $all_subs; do
 		if [ -d sourcedata/freesurfer/sub-"${sub}" ]; then
 			datalad get sourcedata/freesurfer/sub-"${sub}"
@@ -261,7 +268,11 @@ convertsecs () {
 push () {
 	local raw_ds="$1"
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
+	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 	datalad save -d "$derivatives_scratch_path" -m "pre-push save (scratch)"
+        datalad save -d "$derivatives_inprocess_path" -m "pre-push save (corral)"
+	datalad update --merge -d "$derivatives_inprocess_path" -s scratch
+        datalad update --merge -d "$derivatives_scratch_path" -s origin
 	datalad push --to origin -d "$derivatives_scratch_path"
 }
 
@@ -377,10 +388,10 @@ check_results () {
 			echo "${error_joined%,}"
 		fi
 	fi
-	
+
 	if [[ "$errors" == "True" ]] && [ ${#error_sub_array[@]} -gt 0 ]; then
 		if [ ${#failed_sub_array[@]} -gt 0 ]; then
-			failed_joined=("${failed_joined[@]}" "${error_joined[@]}")
+			failed_joined=("${failed_joined[@]}""${error_joined[@]}")
 		else
 			failed_joined="${error_joined[@]}"
 		fi
@@ -389,7 +400,11 @@ check_results () {
 	# Check all subject directories exist
 	local raw_sub_array derivatives_sub_array unique_array
 	mapfile -t raw_sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
-	mapfile -t derivatives_sub_array < <(find "$derivatives_scratch_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
+	if [[ "$check_corral" == "True" ]]; then
+		mapfile -t derivatives_sub_array < <(find "$derivatives_inprocess_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
+	else
+		mapfile -t derivatives_sub_array < <(find "$derivatives_scratch_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
+	fi
 	mapfile -t unique_array < <(comm -3 <(printf "%s\n" "${raw_sub_array[@]}" | sort) <(printf "%s\n" "${derivatives_sub_array[@]-}" | sort) | sort -n) # print unique elements
 	
 	local incomplete="False"
@@ -517,16 +532,18 @@ group () {
 publish () {
 	local raw_ds="$1"
 	local derivatives_final_path="$OPENNEURO/$software/${raw_ds}-${software}"
+	local OpenNeuroDerivatives_path="$OPENNEURO/OpenNeuroDerivatives_github/OpenNeuroDerivatives"
 	
-	source /home1/03201/jbwexler/scripts/export_aws_keys.sh
 	cd "$derivatives_final_path"
 	datalad siblings -s openneuro-derivatives || git-annex initremote openneuro-derivatives type=S3 bucket=openneuro-derivatives exporttree=yes versioning=yes partsize=1GiB encryption=none \
 		fileprefix="${software}"/"${raw_ds}-${software}"/ autoenable=true publicurl=https://openneuro-derivatives.s3.amazonaws.com public=yes
 	git annex export main --to openneuro-derivatives
 	git annex enableremote openneuro-derivatives publicurl=https://openneuro-derivatives.s3.amazonaws.com
 	datalad create-sibling-github -d . OpenNeuroDerivatives/"${raw_ds}-${software}" --publish-depends openneuro-derivatives --access-protocol ssh --existing reconfigure
-	datalad push --to github
+	datalad push --to github -f checkdatapresent
 	gh repo edit OpenNeuroDerivatives/"${raw_ds}-${software}" --description ''
+	sleep 5
+	datalad clone -d "$OpenNeuroDerivatives_path" https://github.com/OpenNeuroDerivatives/"${raw_ds}-${software}".git "$OpenNeuroDerivatives_path/${raw_ds}-${software}"
 }
 
 # initialize variables
@@ -563,6 +580,8 @@ publish="False"
 part="1"
 group="False"
 git_log_check="False"
+skip_push="False"
+skip_rsync="False"
 
 # initialize flags
 while [[ "$#" -gt 0 ]]; do
@@ -590,6 +609,7 @@ while [[ "$#" -gt 0 ]]; do
 	--skip-run-software)
 		skip_run_software="True" ;;
 	--just-run-software)
+		skip_push="True"
 		skip_raw_download="True"
 		skip_create_derivatives="True"
 		skip_setup_scratch="True" ;;
@@ -639,6 +659,8 @@ while [[ "$#" -gt 0 ]]; do
 	--git-log-check)
 		download_create_run="False"
 		git_log_check="True" ;; 
+	--skip-rsync)
+		skip_rsync="True" ;;
 	-x)
 		set -x ;;
   esac
@@ -652,19 +674,23 @@ fi
 
 # run full pipeline
 if [[ "$download_create_run" == "True" ]]; then
-	while IFS= read -r raw_ds; do  
-		if [ -d "$STAGING/derivatives/$software/${raw_ds}-${software}" ]; then
-			push "$raw_ds"
-		fi
-	done <<< "$dataset_list"	
+	if [[ "$skip_push" == "False" ]]; then
+		while IFS= read -r raw_ds; do  
+			if [ -d "$STAGING/derivatives/$software/${raw_ds}-${software}" ]; then
+				push "$raw_ds"
+			fi
+		done <<< "$dataset_list"
+	fi
 	if [[ "$skip_raw_download" == "False" ]]; then
 		while IFS= read -r raw_ds; do  
 			download_raw_ds "$raw_ds"
 		done <<< "$dataset_list"
 	fi
 	if [[ "$skip_create_derivatives" == "False" ]]; then
-		rsync -av "$OPENNEURO/software/containers" "$STAGING" --include ".*"
-		rsync -av "$OPENNEURO/software/templateflow" "$STAGING" --include ".*"
+		if [[ "$skip_rsync" == "True" ]]; then
+			rsync -av --delete "$OPENNEURO/software/containers" "$STAGING" --include ".*"
+			rsync -av --delete "$OPENNEURO/software/templateflow" "$STAGING" --include ".*"
+		fi
 		find "$STAGING/containers" -exec touch -h {} +
 		find "$STAGING/templateflow" -exec touch -h {} +
 		while IFS= read -r raw_ds; do  
@@ -712,9 +738,11 @@ elif [[ "$push" == "True" ]]; then
 		push "$raw_ds"
 	done <<< "$dataset_list"
 elif [[ "$publish" == "True" ]]; then
+	source /home1/03201/jbwexler/scripts/export_aws_keys.sh
 	while IFS= read -r raw_ds; do  
 		publish "$raw_ds"
 	done <<< "$dataset_list"
+	datalad push -d $OPENNEURO/OpenNeuroDerivatives_github/OpenNeuroDerivatives --to github
 elif [[ "$group" == "True" ]]; then
 	while IFS= read -r raw_ds; do  
 		group "$raw_ds"
@@ -725,5 +753,6 @@ elif [[ "$git_log_check" == "True" ]]; then
 		git_log_check "$raw_ds"
 	done <<< "$dataset_list"
 fi
+
 
 
