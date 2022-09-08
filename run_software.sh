@@ -71,17 +71,16 @@ create_derivatives_ds () {
 		sed -i "s/ds000000/${raw_ds:0:8}/g" README.md
 		
 
-		if [[ "$software" == "fmriprep" ]]; then
+		#if [[ "$software" == "fmriprep" ]]; then
 			# Look for existing freesurfer derivatives
-			local fs_path="$OPENNEURO/freesurfer/${raw_ds}-freesurfer"
-			if [[ -d "$fs_path" ]]; then
-				rsync -tvrL "$fs_path/" "$derivatives_inprocess_path/sourcedata/freesurfer/"
-			else
-				rsync -tvrL "$OPENNEURO"/freesurfer/ds000001-freesurfer/fsaverage* "$derivatives_inprocess_path/sourcedata/freesurfer/"
-			fi
-			find "$derivatives_inprocess_path"/sourcedata/freesurfer/fsaverage* -exec touch -h {} + 
-			
-		fi
+		#	local fs_path="$OPENNEURO/freesurfer/${raw_ds}-freesurfer"
+		#	if [[ -d "$fs_path" ]]; then
+		#		rsync -tvrL "$fs_path/" "$derivatives_inprocess_path/sourcedata/freesurfer/"
+		#	else
+		#		rsync -tvrL "$OPENNEURO"/freesurfer/ds000001-freesurfer/fsaverage* "$derivatives_inprocess_path/sourcedata/freesurfer/"
+		#	fi
+		#	find "$derivatives_inprocess_path"/sourcedata/freesurfer/fsaverage* -exec touch -h {} + 
+		#fi
   
 		# Ensure permissions for the group
 		setfacl -R -m g:G-802037:rwX "$derivatives_inprocess_path"
@@ -144,7 +143,7 @@ setup_scratch_ds () {
 	
 	cheap_clone "$derivatives_inprocess_path" "$derivatives_scratch_path"
 	cd "$derivatives_scratch_path" || exit
-	if [[ -d "sourcedata/freesurfer" ]]; then
+	if [[ -d "sourcedata/freesurfer/fsaverage" ]]; then
 		datalad get sourcedata/freesurfer/fsaverage*
 	fi
 	if [[ -d ".reproman" ]]; then
@@ -156,7 +155,11 @@ setup_scratch_ds () {
 		fi
 	done
 	datalad clone -d . --reckless ephemeral "$raw_scratch_path" sourcedata/raw
-	datalad clone -d . --reckless ephemeral "$STAGING/containers" code/containers
+	if [[ "$freesurfer_6" == "True" ]]; then
+		datalad clone -d . --reckless ephemeral "$STAGING/containers_freesurfer6" code/containers
+	else
+		datalad clone -d . --reckless ephemeral "$STAGING/containers" code/containers
+	fi
 	datalad clone -d . --reckless ephemeral "$STAGING/templateflow" sourcedata/templateflow
 	for sub_ds in "$STAGING"/templateflow/tpl*; do
 		datalad clone  --reckless ephemeral -d . "$sub_ds" sourcedata/templateflow/"$(basename "$sub_ds")"
@@ -397,6 +400,14 @@ check_results () {
 		fi
 	fi
 	
+	if [[ "$ignore_errors" == "True" ]] && [ ${#error_sub_array[@]} -gt 0 ]; then
+		if [ ${#success_sub_array[@]} -gt 0 ]; then
+			success_joined=("${success_joined[@]}""${error_joined[@]}")
+		else
+			success_joined="${error_joined[@]}"
+		fi
+	fi
+	
 	# Check all subject directories exist
 	local raw_sub_array derivatives_sub_array unique_array
 	mapfile -t raw_sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
@@ -472,7 +483,7 @@ git_log_check () {
 	scratch_commit=$(git -C "$derivatives_scratch_path" rev-parse HEAD)
 	inprocess_commit=$(git -C "$derivatives_inprocess_path" rev-parse HEAD)
 	if [[ $scratch_commit != $inprocess_commit ]]; then
-		echo "$raw_ds"
+		echo -n "$raw_ds,"
 	fi
 }
 
@@ -582,6 +593,8 @@ group="False"
 git_log_check="False"
 skip_push="False"
 skip_rsync="False"
+freesurfer_6="False"
+ignore_errors="False"
 
 # initialize flags
 while [[ "$#" -gt 0 ]]; do
@@ -661,6 +674,10 @@ while [[ "$#" -gt 0 ]]; do
 		git_log_check="True" ;; 
 	--skip-rsync)
 		skip_rsync="True" ;;
+	--freesurfer-6)
+		freesurfer_6="True" ;;
+	--ignore-errors)
+		ignore_errors="True" ;;
 	-x)
 		set -x ;;
   esac
@@ -688,7 +705,11 @@ if [[ "$download_create_run" == "True" ]]; then
 	fi
 	if [[ "$skip_create_derivatives" == "False" ]]; then
 		if [[ "$skip_rsync" == "True" ]]; then
-			rsync -av --delete "$OPENNEURO/software/containers" "$STAGING" --include ".*"
+			if [[ "$freesurfer_6" == "True" ]]; then
+				rsync -av --delete "$OPENNEURO/software/containers_freesurfer6" "$STAGING" --include ".*"
+			else
+				rsync -av --delete "$OPENNEURO/software/containers" "$STAGING" --include ".*"
+			fi
 			rsync -av --delete "$OPENNEURO/software/templateflow" "$STAGING" --include ".*"
 		fi
 		find "$STAGING/containers" -exec touch -h {} +
@@ -752,6 +773,7 @@ elif [[ "$git_log_check" == "True" ]]; then
 	while IFS= read -r raw_ds; do  
 		git_log_check "$raw_ds"
 	done <<< "$dataset_list"
+	echo
 fi
 
 
