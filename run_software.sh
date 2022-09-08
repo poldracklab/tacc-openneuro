@@ -365,6 +365,23 @@ check_results () {
 		echo
 	done <<< "$reproman_logs"
 	
+
+        if [[ "$ignore_errors" == "True" ]] && [ ${#error_sub_array[@]} -gt 0 ]; then
+                if [ ${#success_sub_array[@]} -gt 0 ]; then
+                        success_sub_array=("${success_sub_array[@]}" "${error_sub_array[@]}")
+                else
+                    	success_sub_array=("${error_sub_array[@]}")
+                fi
+        fi
+
+	if [[ "$errors" == "True" ]] && [ ${#error_sub_array[@]} -gt 0 ]; then
+                if [ ${#failed_sub_array[@]} -gt 0 ]; then
+                        failed_sub_array=("${failed_sub_array[@]}" "${error_sub_array[@]}")
+                else
+                    	failed_sub_array=("${error_sub_array[@]}")
+                fi
+        fi
+
 	if [ ${#success_sub_array[@]} -gt 0 ]; then
 		local success_joined
 		printf -v success_joined '%s,' "${success_sub_array[@]}"
@@ -392,22 +409,6 @@ check_results () {
 		fi
 	fi
 
-	if [[ "$errors" == "True" ]] && [ ${#error_sub_array[@]} -gt 0 ]; then
-		if [ ${#failed_sub_array[@]} -gt 0 ]; then
-			failed_joined=("${failed_joined[@]}""${error_joined[@]}")
-		else
-			failed_joined="${error_joined[@]}"
-		fi
-	fi
-	
-	if [[ "$ignore_errors" == "True" ]] && [ ${#error_sub_array[@]} -gt 0 ]; then
-		if [ ${#success_sub_array[@]} -gt 0 ]; then
-			success_joined=("${success_joined[@]}""${error_joined[@]}")
-		else
-			success_joined="${error_joined[@]}"
-		fi
-	fi
-	
 	# Check all subject directories exist
 	local raw_sub_array derivatives_sub_array unique_array
 	mapfile -t raw_sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
@@ -462,6 +463,7 @@ check_results () {
 	
 	if [[ "$purge" == "True" ]]; then
 		for sub in "${success_sub_array[@]-}"; do
+			echo "$sub"
 			rm -rf "$work_dir/${raw_ds}_sub-$sub"
 		done
 	fi
