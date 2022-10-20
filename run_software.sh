@@ -86,7 +86,7 @@ create_derivatives_ds () {
 		setfacl -R -m g:G-802037:rwX "$derivatives_inprocess_path"
 		find "$derivatives_inprocess_path" -type d -print0 | xargs --null setfacl -R -m d:g:G-802037:rwX
 		
-		datalad siblings add -s scratch --url "$derivatives_scratch_path"	
+		datalad siblings add -s scratch --url "$derivatives_scratch_path"
 		datalad save -m "Initialize dataset"
 	else
 		datalad save -d "$derivatives_inprocess_path" -r -m "ensure in_process copy is clean"
@@ -272,10 +272,11 @@ push () {
 	local raw_ds="$1"
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
+	rm -rf "$derivatives_scratch_path"/.proc*
 	datalad save -d "$derivatives_scratch_path" -m "pre-push save (scratch)"
-        datalad save -d "$derivatives_inprocess_path" -m "pre-push save (corral)"
+    datalad save -d "$derivatives_inprocess_path" -m "pre-push save (corral)"
 	datalad update --merge -d "$derivatives_inprocess_path" -s scratch
-        datalad update --merge -d "$derivatives_scratch_path" -s origin
+    datalad update --merge -d "$derivatives_scratch_path" -s origin
 	datalad push --to origin -d "$derivatives_scratch_path"
 }
 
@@ -296,6 +297,12 @@ check_results () {
 	fi
 	if [ -z "${incomplete_array+x}" ]; then
 		declare -ag incomplete_array=()
+	fi
+	if [ -z "${success_sub_count+x}" ]; then
+		success_sub_count=0
+	fi
+	if [ -z "${error_sub_count+x}" ]; then
+		error_sub_count=0
 	fi
 	
 	if [[ "$software" == "mriqc" ]]; then
@@ -459,16 +466,19 @@ check_results () {
 		success_array+=("$raw_ds")
 	else
 		incomplete_array+=("$raw_ds")
-	fi		
+	fi
+	
+	success_sub_count=$(($success_sub_count + ${#success_sub_array[@]}))
+	error_sub_count=$(($error_sub_count + ${#error_sub_array[@]}))
 	
 	if [[ "$purge" == "True" ]]; then
 		for sub in "${success_sub_array[@]-}"; do
-			echo "$sub"
 			rm -rf "$work_dir/${raw_ds}_sub-$sub"
 		done
 	fi
 	if [[ "$tar" == "True" ]]; then
 		for sub in "${failed_sub_array[@]-}"; do
+			echo "$sub"
 			if [[ -d "$work_dir/${raw_ds}_sub-$sub" ]]; then
 				tar -cvf "$work_dir/${raw_ds}_sub-$sub".tar "$work_dir/${raw_ds}_sub-$sub" 
 				rm -rf "$work_dir/${raw_ds}_sub-$sub"
@@ -496,7 +506,9 @@ clone_derivatives () {
 	local derivatives_final_path="$OPENNEURO/$software/${raw_ds}-${software}"
 	local raw_path="$STAGING/raw/$raw_ds"
 	
-	push "$raw_ds"	
+	if [ -d "$derivatives_scratch_path" ]; then
+		push "$raw_ds"	
+	fi
 	
 	# Move remora logs to corral
 	if compgen -G "$derivatives_inprocess_path/remora*"; then
@@ -522,8 +534,11 @@ clone_derivatives () {
 		chmod -R 775 "$raw_path"
 		rm -rf "$raw_path"
 	fi
-	chmod -R 775 "$derivatives_scratch_path"
-	rm -rf "$derivatives_scratch_path"
+	
+	if [ -d "$derivatives_scratch_path" ]; then
+		chmod -R 775 "$derivatives_scratch_path"
+		rm -rf "$derivatives_scratch_path"
+	fi
 	rm -rf "$SCRATCH/work_dir/$software/$raw_ds"*
 }
 
@@ -552,7 +567,7 @@ publish () {
 		fileprefix="${software}"/"${raw_ds}-${software}"/ autoenable=true publicurl=https://openneuro-derivatives.s3.amazonaws.com public=yes
 	git annex export main --to openneuro-derivatives
 	git annex enableremote openneuro-derivatives publicurl=https://openneuro-derivatives.s3.amazonaws.com
-	datalad create-sibling-github -d . OpenNeuroDerivatives/"${raw_ds}-${software}" --publish-depends openneuro-derivatives --access-protocol ssh --existing reconfigure
+	datalad create-sibling-github -d . OpenNeuroDerivatives/"${raw_ds}-${software}" --publish-depends openneuro-derivatives --access-protocol ssh --existing reconfigure --credential credential.helper
 	datalad push --to github -f checkdatapresent
 	gh repo edit OpenNeuroDerivatives/"${raw_ds}-${software}" --description ''
 	sleep 5
@@ -617,6 +632,8 @@ while [[ "$#" -gt 0 ]]; do
 		dataset_list="${2//,/$'\n'}"; shift ;;
 	--dataset-all)
 		dataset_list=$(find "$STAGING"/derivatives/"$software"/ -maxdepth 1 -name "ds*" | sed -r 's/.*(ds......).*/\1/g') ;;
+	--dataset-all-cloned)
+		dataset_list=$(find "$OPENNEURO"/"$software"/ -maxdepth 1 -name "ds*" | sed -r 's/.*(ds......).*/\1/g') ;;
 	--skip-raw-download)
 		skip_raw_download="True" ;;
 	--skip-create-derivatives)
@@ -748,6 +765,10 @@ elif [[ "$clone_derivatives" == "True" ]]; then
 		echo -e "Incomplete: "
 		echo "${incomplete_print%,}"
 		clone_list="$(echo ${success_print%,} | sed 's/,/\n/g')"
+		echo -e "\nSuccess subject count: "
+		echo "$success_sub_count"
+		echo -e "\nError subject count: "
+		echo "$error_sub_count"
 	else
 		clone_list="$dataset_list"
 	fi
@@ -767,6 +788,7 @@ elif [[ "$publish" == "True" ]]; then
 	done <<< "$dataset_list"
 	datalad push -d $OPENNEURO/OpenNeuroDerivatives_github/OpenNeuroDerivatives --to github
 elif [[ "$group" == "True" ]]; then
+	# need to manually run 'conda activate mriqc'
 	while IFS= read -r raw_ds; do  
 		group "$raw_ds"
 	done <<< "$dataset_list"
