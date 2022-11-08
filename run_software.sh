@@ -222,7 +222,7 @@ run_software () {
 			rm -rf "$derivatives_scratch_path/sub-${sub}.html"
 		fi
 		if [[ -f "$work_dir/${raw_ds}_sub-${sub}".tar ]]; then
-			tar -xvf "$work_dir/${raw_ds}_sub-${sub}".tar -C "$work_dir" && rm -rf "$work_dir/${raw_ds}_sub-${sub}".tar
+			tar -xvf "$work_dir/${raw_ds}_sub-${sub}".tar -C /  && rm -rf "$work_dir/${raw_ds}_sub-${sub}".tar
 			find "$work_dir/${raw_ds}_sub-${sub}" -type f -exec touch {} +
 		fi
 	done
@@ -272,7 +272,7 @@ push () {
 	local raw_ds="$1"
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
-	rm -rf "$derivatives_scratch_path"/.proc*
+	find "$derivatives_scratch_path" -name ".proc*" -type f -delete
 	datalad save -d "$derivatives_scratch_path" -m "pre-push save (scratch)"
     datalad save -d "$derivatives_inprocess_path" -m "pre-push save (corral)"
 	datalad update --merge -d "$derivatives_inprocess_path" -s scratch
