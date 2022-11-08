@@ -723,7 +723,7 @@ if [[ "$download_create_run" == "True" ]]; then
 		done <<< "$dataset_list"
 	fi
 	if [[ "$skip_create_derivatives" == "False" ]]; then
-		if [[ "$skip_rsync" == "True" ]]; then
+		if [[ "$skip_rsync" == "False" ]]; then
 			if [[ "$freesurfer_6" == "True" ]]; then
 				rsync -av --delete "$OPENNEURO/software/containers_freesurfer6" "$STAGING" --include ".*"
 			else
