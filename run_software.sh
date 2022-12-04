@@ -185,8 +185,9 @@ run_software () {
 		local mem_mb="$(( 150000 / subs_per_node ))"
 		local command=("--output-spaces" "MNI152NLin2009cAsym:res-2" "anat" "func" "fsaverage5" "--nthreads" "14" \
 			"--omp-nthreads" "7" "--skip-bids-validation" "--notrack" "--fs-license-file" "$fs_license" \
-				"--use-aroma" "--ignore" "slicetiming" "--output-layout" "bids" "--cifti-output" "--resource-monitor" \
-					"--skull-strip-t1w" "$skull_strip" "--mem_mb" "$mem_mb" "--bids-database-dir" "/tmp" "--md-only-boilerplate")
+			"--me-output-echos" \
+			"--use-aroma" "--ignore" "slicetiming" "--output-layout" "bids" "--cifti-output" "--resource-monitor" \
+			"--skull-strip-t1w" "$skull_strip" "--mem_mb" "$mem_mb" "--bids-database-dir" "/tmp" "--md-only-boilerplate")
 		if [[ "$syn_sdc" ==  "True" ]]; then
 			command+=("--use-syn-sdc")
 			command+=("warn")
