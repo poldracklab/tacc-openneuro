@@ -124,6 +124,9 @@ setup_scratch_ds () {
 	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 	
+	if [[ "$rerun" == "True" ]]; then
+		push "$raw_ds"
+	fi
 	check_corral="True"
 	get_subs "$raw_ds"
 	
@@ -177,7 +180,6 @@ run_software () {
 	cd "$derivatives_scratch_path" || exit
 
 	if [[ "$software" == "fmriprep" ]]; then
-		local walltime="48:00:00"
 		local killjob_factors=".85,.25"
 		if [ -z "$subs_per_node" ]; then
 			local subs_per_node=4
@@ -194,7 +196,6 @@ run_software () {
 		fi
 		
 	elif [[ "$software" == "mriqc" ]]; then
-		local walltime="8:00:00"
 		local killjob_factors=".85,.25"
 		if [ -z "$subs_per_node" ]; then
 			local subs_per_node=5
@@ -220,7 +221,7 @@ run_software () {
 			rm -rf "$derivatives_scratch_path/sub-${sub}"
 		fi
 		if [[ -L "$derivatives_scratch_path/sub-${sub}.html" ]] || [[ -f "$derivatives_scratch_path/sub-${sub}.html" ]]; then
-			rm -rf "$derivatives_scratch_path/sub-${sub}.html"
+			rm -rf "$derivatives_scratch_path/sub-${sub}*.html"
 		fi
 		if [[ -f "$work_dir/${raw_ds}_sub-${sub}".tar ]]; then
 			tar -xvf "$work_dir/${raw_ds}_sub-${sub}".tar -C /  && rm -rf "$work_dir/${raw_ds}_sub-${sub}".tar
@@ -613,6 +614,7 @@ skip_push="False"
 skip_rsync="False"
 freesurfer_6="False"
 ignore_errors="False"
+walltime=""
 
 # initialize flags
 while [[ "$#" -gt 0 ]]; do
@@ -698,6 +700,8 @@ while [[ "$#" -gt 0 ]]; do
 		freesurfer_6="True" ;;
 	--ignore-errors)
 		ignore_errors="True" ;;
+	--walltime)
+		walltime="$2"; shift ;;
 	-x)
 		set -x ;;
   esac
@@ -707,6 +711,14 @@ done
 if [ -z "$dataset_list" ]; then
 	echo "No datasets list provided"
 	exit 1
+fi
+
+if [ -z "$walltime" ]; then
+	if [[ "$software" == "fmriprep" ]]; then
+                walltime="48:00:00"
+	elif [[ "$software" == "mriqc" ]]; then
+                walltime="8:00:00"
+	fi
 fi
 
 # run full pipeline
