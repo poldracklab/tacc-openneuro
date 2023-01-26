@@ -569,7 +569,7 @@ publish () {
 		fileprefix="${software}"/"${raw_ds}-${software}"/ autoenable=true publicurl=https://openneuro-derivatives.s3.amazonaws.com public=yes
 	git annex export main --to openneuro-derivatives
 	git annex enableremote openneuro-derivatives publicurl=https://openneuro-derivatives.s3.amazonaws.com
-	datalad create-sibling-github -d . OpenNeuroDerivatives/"${raw_ds}-${software}" --publish-depends openneuro-derivatives --access-protocol ssh --existing reconfigure --credential credential.helper
+	datalad create-sibling-github -d . OpenNeuroDerivatives/"${raw_ds}-${software}" --publish-depends openneuro-derivatives --access-protocol ssh --existing reconfigure --credential datalad.credential.helper
 	datalad push --to github -f checkdatapresent
 	gh repo edit OpenNeuroDerivatives/"${raw_ds}-${software}" --description ''
 	sleep 5
