@@ -702,6 +702,11 @@ while [[ "$#" -gt 0 ]]; do
 		ignore_errors="True" ;;
 	--walltime)
 		walltime="$2"; shift ;;
+        --just-download-raw)
+                skip_create_derivatives="True"
+                skip_run_software="True"
+                skip_push="True"
+                skip_setup_scratch="True" ;; 
 	-x)
 		set -x ;;
   esac
