@@ -221,7 +221,7 @@ run_software () {
 			rm -rf "$derivatives_scratch_path/sub-${sub}"
 		fi
 		if [[ -L "$derivatives_scratch_path/sub-${sub}.html" ]] || [[ -f "$derivatives_scratch_path/sub-${sub}.html" ]]; then
-			rm -rf "$derivatives_scratch_path/sub-${sub}*.html"
+			rm -rf "$derivatives_scratch_path/sub-${sub}.html"
 		fi
 		if [[ -f "$work_dir/${raw_ds}_sub-${sub}".tar ]]; then
 			tar -xvf "$work_dir/${raw_ds}_sub-${sub}".tar -C /  && rm -rf "$work_dir/${raw_ds}_sub-${sub}".tar
