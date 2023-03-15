@@ -5,21 +5,40 @@ set -eu
 get_subs () {
 	local raw_ds="$1"
 	local raw_corral_path="$OPENNEURO/raw/$raw_ds"
+	all_subs_temp=''
+	declare -ag all_subs_arr=()
 	if [ -z "$all_subs_arg" ]; then
 		if [[ "$rerun" == "True" ]]; then
 			unset failed_joined
 			check_results "$raw_ds"
-			all_subs="${failed_joined[@]//,/$'\n'}"
+			all_subs_temp="${failed_joined[@]//,/$'\n'}"
 		elif [[ "$remaining" == "True" ]]; then
 			unset sub_joined
 			check_results "$raw_ds"
-			all_subs="${sub_joined//,/$'\n'}"
+			all_subs_temp="${sub_joined//,/$'\n'}"
 		else
-			all_subs=$(find "$raw_corral_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort)
+			all_subs_temp=$(find "$raw_corral_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort)
 		fi
 	else
-		all_subs="${all_subs_arg//,/$'\n'}"
+		all_subs_temp="${all_subs_arg//,/$'\n'}"
 	fi
+
+	if [[ "$software" == "mriqc" ]]; then
+		while read -r sub; do
+			if [[ $(find "$raw_corral_path/sub-${sub}/" -wholename "*anat/*.nii*" -o -wholename "*func/*.bold.nii*") ]]; then
+				all_subs_arr+=("$sub")
+				printf -v all_subs '%s,' "${all_subs_arr[@]}"
+			fi
+		done <<< "$all_subs_temp"
+	elif [[ "$software" == "fmriprep" ]]; then
+               	while read -r sub; do
+                        if [[ $(find "$raw_corral_path/sub-${sub}/" -wholename "*func/*bold.nii*") ]] && [[ $(find "$raw_corral_path/sub-${sub}/" -wholename "*anat/*T1w.nii*") ]]; then
+                                all_subs_arr+=("$sub")
+			fi
+		done <<< "$all_subs_temp"
+	fi
+
+	printf -v all_subs '%s,' "${all_subs_arr[@]}"
 }
 
 # Clone/update raw datasets and download necessary data for fmriprep/mriqc
