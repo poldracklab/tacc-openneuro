@@ -38,7 +38,7 @@ get_subs () {
 		done <<< "$all_subs_temp"
 	fi
 
-	printf -v all_subs '%s,' "${all_subs_arr[@]}"
+	printf -v all_subs '%s ' "${all_subs_arr[@]}"
 }
 
 # Clone/update raw datasets and download necessary data for fmriprep/mriqc
