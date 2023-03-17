@@ -56,6 +56,7 @@ download_raw_ds () {
 		cd "$raw_corral_path" || exit
 		find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
 			-exec datalad get {} +
+		git annex fsck
 	else
 		# Update
 		cd "$raw_corral_path" || exit			
