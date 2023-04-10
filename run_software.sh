@@ -588,7 +588,7 @@ publish () {
 	datalad siblings -s openneuro-derivatives || git-annex initremote openneuro-derivatives type=S3 bucket=openneuro-derivatives exporttree=yes versioning=yes partsize=1GiB encryption=none \
 		fileprefix="${software}"/"${raw_ds}-${software}"/ autoenable=true publicurl=https://openneuro-derivatives.s3.amazonaws.com public=yes
 	git annex export main --to openneuro-derivatives
-	git annex enableremote openneuro-derivatives publicurl=https://openneuro-derivatives.s3.amazonaws.com
+	git annex enableremote openneuro-derivatives publicurl=https://openneuro-derivatives.s3.amazonaws.com public=no
 	datalad create-sibling-github -d . OpenNeuroDerivatives/"${raw_ds}-${software}" --publish-depends openneuro-derivatives --access-protocol ssh --existing reconfigure --credential datalad.credential.helper
 	datalad push --to github -f checkdatapresent
 	gh repo edit OpenNeuroDerivatives/"${raw_ds}-${software}" --description ''
