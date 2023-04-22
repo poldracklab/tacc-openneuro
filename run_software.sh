@@ -4,7 +4,7 @@ set -eu
 
 get_subs () {
 	local raw_ds="$1"
-	local raw_corral_path="$OPENNEURO/raw/$raw_ds"
+	local raw_corral_path="$RAW/$raw_ds"
 	all_subs_temp=''
 	declare -ag all_subs_arr=()
 	if [ -z "$all_subs_arg" ]; then
@@ -44,7 +44,7 @@ get_subs () {
 # Clone/update raw datasets and download necessary data for fmriprep/mriqc
 download_raw_ds () {
 	local raw_ds="$1"
-	local raw_corral_path="$OPENNEURO/raw/$raw_ds"
+	local raw_corral_path="$RAW/$raw_ds"
 	
 	if [[ ! -d "$raw_corral_path" ]]; then
 		datalad clone https://github.com/OpenNeuroDatasets/"${raw_ds}".git "$raw_corral_path"
@@ -139,7 +139,7 @@ cheap_clone () {
 # Setup derivatives directory on scratch
 setup_scratch_ds () {
 	local raw_ds="$1"
-	local raw_corral_path="$OPENNEURO/raw/$raw_ds"
+	local raw_corral_path="$RAW/$raw_ds"
 	local raw_scratch_path="$STAGING/raw/$raw_ds"
 	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
@@ -296,9 +296,9 @@ push () {
 	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 	find "$derivatives_scratch_path" -name ".proc*" -type f -delete
 	datalad save -d "$derivatives_scratch_path" -m "pre-push save (scratch)"
-    datalad save -d "$derivatives_inprocess_path" -m "pre-push save (corral)"
+	datalad save -d "$derivatives_inprocess_path" -m "pre-push save (corral)"
 	datalad update --merge -d "$derivatives_inprocess_path" -s scratch
-    datalad update --merge -d "$derivatives_scratch_path" -s origin
+	datalad update --merge -d "$derivatives_scratch_path" -s origin
 	datalad push --to origin -d "$derivatives_scratch_path"
 }
 
@@ -306,7 +306,7 @@ check_results () {
 	local raw_ds="$1"
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
-	local raw_path="$OPENNEURO/raw/$raw_ds"
+	local raw_corral_path="$RAW/$raw_ds"
 	
 	if [ -z "${success_array+x}" ]; then
 		declare -ag success_array=()
@@ -340,7 +340,7 @@ check_results () {
 		reproman_logs="$(find "$derivatives_scratch_path/.reproman/jobs/local/" -maxdepth 1 -mindepth 1 | sort -nr)"
 	fi
 	local sub_array
-	readarray -t sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort )
+	readarray -t sub_array < <(find "$raw_corral_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort )
 	local success_sub_array=()
 	local failed_sub_array=()
 	local error_sub_array=()
@@ -440,7 +440,7 @@ check_results () {
 
 	# Check all subject directories exist
 	local raw_sub_array derivatives_sub_array unique_array
-	mapfile -t raw_sub_array < <(find "$raw_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
+	mapfile -t raw_sub_array < <(find "$raw_corral_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
 	if [[ "$check_corral" == "True" ]]; then
 		mapfile -t derivatives_sub_array < <(find "$derivatives_inprocess_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' )
 	else
@@ -544,7 +544,11 @@ clone_derivatives () {
 	cd "$derivatives_final_path" || exit
 	git config --file .gitmodules --replace-all submodule.code/containers.url https://github.com/ReproNim/containers.git
 	git config --file .gitmodules --unset-all submodule.code/containers.datalad-url
-	git config --file .gitmodules --replace-all submodule.sourcedata/raw.url https://github.com/OpenNeuroDatasets/"$raw_ds".git
+	if grep -q "OpenNeuroForks" .git/config; then
+	       	git config --file .gitmodules --replace-all submodule.sourcedata/raw.url https://github.com/OpenNeuroForks/"$raw_ds".git
+	else
+		git config --file .gitmodules --replace-all submodule.sourcedata/raw.url https://github.com/OpenNeuroDatasets/"$raw_ds".git
+	fi
 	git config --file .gitmodules --unset-all submodule.sourcedata/raw.datalad-url
 	git config --file .gitmodules --replace-all submodule.sourcedata/templateflow.url https://github.com/templateflow/templateflow.git
 	git config --file .gitmodules --unset-all submodule.sourcedata/templateflow.datalad-url
@@ -567,13 +571,13 @@ clone_derivatives () {
 group () {
 	local raw_ds="$1"
 	local derivatives_final_path="$OPENNEURO/$software/${raw_ds}-${software}"
-	local raw_path="$OPENNEURO/raw/$raw_ds"
+	local raw_corral_path="$RAW/$raw_ds"
 	
 	if [[ ! -f "$derivatives_final_path/group_T1w.html" ]]; then
 		echo "$raw_ds"
 		download_raw_ds "$raw_ds"
 		cd "$derivatives_final_path" || exit
-		mriqc "$raw_path" . group -w "$OPENNEURO"/mriqc/work/"$raw_ds" || exit
+		mriqc "$raw_corral_path" . group -w "$OPENNEURO"/mriqc/work/"$raw_ds" || exit
 		datalad save -m "group report"
 	fi
 
@@ -602,6 +606,7 @@ software="$1"
 STAGING="$SCRATCH/openneuro_derivatives"
 OPENNEURO="/corral-repl/utexas/poldracklab/data/OpenNeuro"
 work_dir="$SCRATCH/work_dir/$software"
+RAW="$OPENNEURO/raw"
 fs_license=$HOME/.freesurfer.txt # this should be in code/license
 
 syn_sdc="True"
@@ -729,6 +734,8 @@ while [[ "$#" -gt 0 ]]; do
                 skip_setup_scratch="True" ;; 
 	-x)
 		set -x ;;
+	--fork)
+		RAW=$OPENNEURO/raw/OpenNeuroForks ;;
   esac
   shift
 done
