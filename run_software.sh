@@ -755,43 +755,37 @@ fi
 
 # run full pipeline
 if [[ "$download_create_run" == "True" ]]; then
-	if [[ "$skip_push" == "False" ]]; then
-		while IFS= read -r raw_ds; do  
+	if [[ "$skip_rsync" == "False" ]]; then
+		if [[ "$freesurfer_6" == "True" ]]; then
+			rsync -av --delete "$OPENNEURO/software/containers_freesurfer6" "$STAGING" --include ".*"
+		else
+			rsync -av --delete "$OPENNEURO/software/containers" "$STAGING" --include ".*"
+		fi
+		rsync -av --delete "$OPENNEURO/software/templateflow" "$STAGING" --include ".*"
+	fi
+	find "$STAGING/containers" -exec touch -h {} +
+	find "$STAGING/templateflow" -exec touch -h {} +
+	
+	while IFS= read -r raw_ds; do  
+		if [[ "$skip_push" == "False" ]]; then
 			if [ -d "$STAGING/derivatives/$software/${raw_ds}-${software}" ]; then
 				push "$raw_ds"
 			fi
-		done <<< "$dataset_list"
-	fi
-	if [[ "$skip_raw_download" == "False" ]]; then
-		while IFS= read -r raw_ds; do  
-			download_raw_ds "$raw_ds"
-		done <<< "$dataset_list"
-	fi
-	if [[ "$skip_create_derivatives" == "False" ]]; then
-		if [[ "$skip_rsync" == "False" ]]; then
-			if [[ "$freesurfer_6" == "True" ]]; then
-				rsync -av --delete "$OPENNEURO/software/containers_freesurfer6" "$STAGING" --include ".*"
-			else
-				rsync -av --delete "$OPENNEURO/software/containers" "$STAGING" --include ".*"
-			fi
-			rsync -av --delete "$OPENNEURO/software/templateflow" "$STAGING" --include ".*"
 		fi
-		find "$STAGING/containers" -exec touch -h {} +
-		find "$STAGING/templateflow" -exec touch -h {} +
-		while IFS= read -r raw_ds; do  
+		if [[ "$skip_raw_download" == "False" ]]; then
+			download_raw_ds "$raw_ds"
+		fi
+		if [[ "$skip_create_derivatives" == "False" ]]; then
 			create_derivatives_ds "$raw_ds"
-		done <<< "$dataset_list"	
-	fi
-	if [[ "$skip_setup_scratch" == "False" ]]; then
-		while IFS= read -r raw_ds; do  
+		fi
+		if [[ "$skip_setup_scratch" == "False" ]]; then
 			setup_scratch_ds "$raw_ds"
-		done <<< "$dataset_list"		
-	fi			
-	if [[ "$skip_run_software" == "False" ]]; then
-		while IFS= read -r raw_ds; do  
+		fi			
+		if [[ "$skip_run_software" == "False" ]]; then
 			run_software "$raw_ds"
-		done <<< "$dataset_list"		
-	fi	
+		fi
+	done <<< "$dataset_list"		
+	
 elif [[ "$clone_derivatives" == "True" ]]; then
 	if [[ "$ignore_check" != "True" ]]; then
 		while IFS= read -r raw_ds; do  
