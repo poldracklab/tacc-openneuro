@@ -89,18 +89,6 @@ create_derivatives_ds () {
 		cp code/tacc-openneuro/gitattributes_openneuro.txt .gitattributes
 		cp code/tacc-openneuro/gitattributes_datalad_openneuro.txt .datalad/.gitattributes
 		sed -i "s/ds000000/${raw_ds:0:8}/g" README.md
-		
-
-		#if [[ "$software" == "fmriprep" ]]; then
-			# Look for existing freesurfer derivatives
-		#	local fs_path="$OPENNEURO/freesurfer/${raw_ds}-freesurfer"
-		#	if [[ -d "$fs_path" ]]; then
-		#		rsync -tvrL "$fs_path/" "$derivatives_inprocess_path/sourcedata/freesurfer/"
-		#	else
-		#		rsync -tvrL "$OPENNEURO"/freesurfer/ds000001-freesurfer/fsaverage* "$derivatives_inprocess_path/sourcedata/freesurfer/"
-		#	fi
-		#	find "$derivatives_inprocess_path"/sourcedata/freesurfer/fsaverage* -exec touch -h {} + 
-		#fi
   
 		# Ensure permissions for the group
 		setfacl -R -m g:G-802037:rwX "$derivatives_inprocess_path"
@@ -168,6 +156,11 @@ setup_scratch_ds () {
 	cd "$derivatives_scratch_path" || exit
 	if [[ -d "sourcedata/freesurfer/fsaverage" ]]; then
 		datalad get sourcedata/freesurfer/fsaverage*
+	elif [[ "$software" == "fmriprep" ]]; then
+		# Copy in fsaverage and fsaverage5 prior to running to avoid race conditions
+		mkdir -p sourcedata/freesurfer/
+		rsync -tvrL "$fsaverage"/fsaverage* sourcedata/freesurfer/
+		find sourcedata/freesurfer/fsaverage* -exec touch -h {} +
 	fi
 	if [[ -d ".reproman" ]]; then
 		datalad get .reproman
@@ -608,6 +601,7 @@ OPENNEURO="/corral-repl/utexas/poldracklab/data/OpenNeuro"
 work_dir="$SCRATCH/work_dir/$software"
 RAW="$OPENNEURO/raw"
 fs_license=$HOME/.freesurfer.txt # this should be in code/license
+fsaverage="$OPENNEURO/software/fsaverage"
 
 syn_sdc="True"
 skull_strip="force"
