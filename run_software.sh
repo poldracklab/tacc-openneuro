@@ -593,6 +593,24 @@ publish () {
 	datalad clone -d "$OpenNeuroDerivatives_path" https://github.com/OpenNeuroDerivatives/"${raw_ds}-${software}".git "$OpenNeuroDerivatives_path/${raw_ds}-${software}"
 }
 
+rsync_containers_templateflow () {
+	# rsyncs containers and templateflow from corral to scratch if 5 or more days have passed since last rsync
+        now=$(date +%s)
+        if [[ -f "$rsync_timestamp" ]]; then
+                last_run=$(cat $rsync_timestamp)
+        else
+            	last_run=0
+        fi
+	diff=$(expr $now - $last_run)
+	if [[ $diff -gt $((5 * 24 * 60 * 60)) ]]; then
+		rsync -av --delete "$OPENNEURO/software/containers" "$STAGING" --include ".*"
+		rsync -av --delete "$OPENNEURO/software/templateflow" "$STAGING" --include ".*"
+		echo "$now" > "$rsync_timestamp"
+        fi
+	find "$STAGING/containers" -exec touch -h {} +
+        find "$STAGING/templateflow" -exec touch -h {} +
+}
+
 # initialize variables
 user_email="jbwexler@tutanota.com"
 software="$1"
@@ -602,6 +620,7 @@ work_dir="$SCRATCH/work_dir/$software"
 RAW="$OPENNEURO/raw"
 fs_license=$HOME/.freesurfer.txt # this should be in code/license
 fsaverage="$OPENNEURO/software/fsaverage"
+rsync_timestamp="$OPENNEURO/software/rsync_timestamp"
 
 syn_sdc="True"
 skull_strip="force"
@@ -749,17 +768,7 @@ fi
 
 # run full pipeline
 if [[ "$download_create_run" == "True" ]]; then
-	if [[ "$skip_rsync" == "False" ]]; then
-		if [[ "$freesurfer_6" == "True" ]]; then
-			rsync -av --delete "$OPENNEURO/software/containers_freesurfer6" "$STAGING" --include ".*"
-		else
-			rsync -av --delete "$OPENNEURO/software/containers" "$STAGING" --include ".*"
-		fi
-		rsync -av --delete "$OPENNEURO/software/templateflow" "$STAGING" --include ".*"
-	fi
-	find "$STAGING/containers" -exec touch -h {} +
-	find "$STAGING/templateflow" -exec touch -h {} +
-	
+	rsync_containers_templateflow	
 	while IFS= read -r raw_ds; do  
 		if [[ "$skip_push" == "False" ]]; then
 			if [ -d "$STAGING/derivatives/$software/${raw_ds}-${software}" ]; then
