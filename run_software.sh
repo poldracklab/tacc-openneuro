@@ -566,7 +566,7 @@ group () {
 	local derivatives_final_path="$OPENNEURO/$software/${raw_ds}-${software}"
 	local raw_corral_path="$RAW/$raw_ds"
 	
-	if [[ ! -f "$derivatives_final_path/group_T1w.html" ]]; then
+	if ! compgen -G "$derivatives_final_path"/group_* > /dev/null; then
 		echo "$raw_ds"
 		download_raw_ds "$raw_ds"
 		cd "$derivatives_final_path" || exit
@@ -602,7 +602,7 @@ rsync_containers_templateflow () {
             	last_run=0
         fi
 	diff=$(expr $now - $last_run)
-	if [[ $diff -gt $((5 * 24 * 60 * 60)) ]]; then
+	if [[ "$diff" -gt $((5 * 24 * 60 * 60)) ]] || [[ "rsync" == "True" ]]; then
 		rsync -av --delete "$OPENNEURO/software/containers" "$STAGING" --include ".*"
 		rsync -av --delete "$OPENNEURO/software/templateflow" "$STAGING" --include ".*"
 		echo "$now" > "$rsync_timestamp"
@@ -649,7 +649,7 @@ part="1"
 group="False"
 git_log_check="False"
 skip_push="False"
-skip_rsync="False"
+rsync="False"
 freesurfer_6="False"
 ignore_errors="False"
 walltime=""
@@ -732,8 +732,8 @@ while [[ "$#" -gt 0 ]]; do
 	--git-log-check)
 		download_create_run="False"
 		git_log_check="True" ;; 
-	--skip-rsync)
-		skip_rsync="True" ;;
+	--rsync)
+		rsync="True" ;;
 	--freesurfer-6)
 		freesurfer_6="True" ;;
 	--ignore-errors)
