@@ -263,7 +263,7 @@ run_software () {
 			local queue="small"
 		fi
 		
-		reproman run -r local --sub slurm --orc datalad-no-remote \
+		"$prefix" reproman run -r local --sub slurm --orc datalad-no-remote \
 			--bp sub="$sub_list" \
 				--jp num_processes="$processes" --jp num_nodes="$nodes" \
 					--jp walltime="$walltime" --jp queue="$queue" --jp launcher=true \
@@ -740,15 +740,18 @@ while [[ "$#" -gt 0 ]]; do
 		ignore_errors="True" ;;
 	--walltime)
 		walltime="$2"; shift ;;
-        --just-download-raw)
-                skip_create_derivatives="True"
-                skip_run_software="True"
-                skip_push="True"
-                skip_setup_scratch="True" ;; 
+    --just-download-raw)
+		skip_create_derivatives="True"
+		skip_run_software="True"
+		skip_push="True"
+		skip_setup_scratch="True" ;; 
 	-x)
 		set -x ;;
 	--fork)
 		RAW=$OPENNEURO/raw/OpenNeuroForks ;;
+	--prefix)
+		prefix="$2"; shift ;;
+	
   esac
   shift
 done
