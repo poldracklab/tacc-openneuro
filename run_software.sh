@@ -500,6 +500,19 @@ check_results () {
 			fi
 		done
 	fi
+	if [[ "$inode" == "True" ]]; then
+		sample_size=5
+		mapfile -t find_work_dir < <(find "$work_dir" -maxdepth 1 -type d -name "${raw_ds}*")
+		sample=($(shuf -e  "${find_work_dir[@]}" -n "$sample_size"))
+		du_out=$(du -shc --inode -B1 "${sample[@]}")
+		actual_sample_size=${#find_work_dir[@]}
+		echo
+		echo "Inodes:"
+		echo "$du_out"
+		du_total=$(echo "$du_out" | tail -n 1 | awk '{print $1}')
+		du_mean=$(($du_total / $actual_sample_size))
+		echo "Mean: $du_mean"
+	fi
 }
 
 git_log_check () {
@@ -653,6 +666,7 @@ rsync="False"
 freesurfer_6="False"
 ignore_errors="False"
 walltime=""
+inode="False"
 
 # initialize flags
 while [[ "$#" -gt 0 ]]; do
@@ -740,7 +754,7 @@ while [[ "$#" -gt 0 ]]; do
 		ignore_errors="True" ;;
 	--walltime)
 		walltime="$2"; shift ;;
-    --just-download-raw)
+	--just-download-raw)
 		skip_create_derivatives="True"
 		skip_run_software="True"
 		skip_push="True"
@@ -751,6 +765,8 @@ while [[ "$#" -gt 0 ]]; do
 		RAW=$OPENNEURO/raw/OpenNeuroForks ;;
 	--prefix)
 		prefix="$2"; shift ;;
+	--inode)
+		inode="True" ;;
 	
   esac
   shift
