@@ -263,7 +263,7 @@ run_software () {
 			local queue="small"
 		fi
 		
-		"$prefix" reproman run -r local --sub slurm --orc datalad-no-remote \
+		${prefix:-} reproman run -r local --sub slurm --orc datalad-no-remote \
 			--bp sub="$sub_list" \
 				--jp num_processes="$processes" --jp num_nodes="$nodes" \
 					--jp walltime="$walltime" --jp queue="$queue" --jp launcher=true \
@@ -667,6 +667,7 @@ freesurfer_6="False"
 ignore_errors="False"
 walltime=""
 inode="False"
+prefix=''
 
 # initialize flags
 while [[ "$#" -gt 0 ]]; do
