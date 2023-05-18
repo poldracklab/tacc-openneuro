@@ -697,10 +697,11 @@ while [[ "$#" -gt 0 ]]; do
 	--skip-run-software)
 		skip_run_software="True" ;;
 	--just-run-software)
-		skip_push="True"
 		skip_raw_download="True"
 		skip_create_derivatives="True"
 		skip_setup_scratch="True" ;;
+	--skip-push)
+                skip_push="True" ;;
 	--skip-setup-scratch)
 		skip_setup_scratch="True" ;;
 	--skip-raw-clone)
