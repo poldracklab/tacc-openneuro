@@ -207,7 +207,11 @@ run_software () {
 			command+=("--use-syn-sdc")
 			command+=("warn")
 		fi
-		
+		if [ -n "$bids_filter_file" ]; then
+			bids_filter_full_path="$derivatives_scratch_path/code/$bids_filter_file"
+			command+=("--bids-filter-file")
+			command+=("$bids_filter_full_path")
+		fi
 	elif [[ "$software" == "mriqc" ]]; then
 		local killjob_factors=".85,.25"
 		if [ -z "$subs_per_node" ]; then
@@ -265,13 +269,13 @@ run_software () {
 		
 		${prefix:-} reproman run -r local --sub slurm --orc datalad-no-remote \
 			--bp sub="$sub_list" \
-				--jp num_processes="$processes" --jp num_nodes="$nodes" \
-					--jp walltime="$walltime" --jp queue="$queue" --jp launcher=true \
-						--jp job_name="${raw_ds}-${software}" --jp mail_type=END --jp mail_user="$user_email" \
-							--jp "container=code/containers/bids-${software}" --jp \
-								killjob_factors="$killjob_factors" sourcedata/raw \
-									"$derivatives_scratch_path" participant --participant-label '{p[sub]}' \
-										-w "$work_dir/${raw_ds}_sub-{p[sub]}" -vv "${command[@]}"
+			--jp num_processes="$processes" --jp num_nodes="$nodes" \
+			--jp walltime="$walltime" --jp queue="$queue" --jp launcher=true \
+			--jp job_name="${raw_ds}-${software}" --jp mail_type=END --jp mail_user="$user_email" \
+			--jp "container=code/containers/bids-${software}" --jp killjob_factors="$killjob_factors" \
+			sourcedata/raw "$derivatives_scratch_path" participant --participant-label '{p[sub]}' \
+			-w "$work_dir/${raw_ds}_sub-{p[sub]}" -vv "${command[@]}"
+										
 		echo
 	done
 }
@@ -668,6 +672,7 @@ ignore_errors="False"
 walltime=""
 inode="False"
 prefix=''
+bids_filter_file=""
 
 # initialize flags
 while [[ "$#" -gt 0 ]]; do
@@ -769,7 +774,8 @@ while [[ "$#" -gt 0 ]]; do
 		prefix="$2"; shift ;;
 	--inode)
 		inode="True" ;;
-	
+	--bids-filter-file)
+		bids_filter_file="$2"; shift ;;
   esac
   shift
 done
