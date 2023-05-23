@@ -200,8 +200,7 @@ run_software () {
 		local mem_mb="$(( 150000 / subs_per_node ))"
 		local command=("--output-spaces" "MNI152NLin2009cAsym:res-2" "anat" "func" "fsaverage5" "--nthreads" "14" \
 			"--omp-nthreads" "7" "--skip-bids-validation" "--notrack" "--fs-license-file" "$fs_license" \
-			"--me-output-echos" \
-			"--use-aroma" "--ignore" "slicetiming" "--output-layout" "bids" "--cifti-output" \
+			"--me-output-echos" "--ignore" "slicetiming" "--output-layout" "bids" "--cifti-output" \
 			"--skull-strip-t1w" "$skull_strip" "--mem_mb" "$mem_mb" "--bids-database-dir" "/tmp" "--md-only-boilerplate")
 		if [[ "$syn_sdc" ==  "True" ]]; then
 			command+=("--use-syn-sdc")
@@ -211,6 +210,9 @@ run_software () {
 			bids_filter_full_path="$derivatives_scratch_path/code/$bids_filter_file"
 			command+=("--bids-filter-file")
 			command+=("$bids_filter_full_path")
+		fi
+		if [[ "$aroma" == "True" ]]; then
+			command+=("--use-aroma")
 		fi
 	elif [[ "$software" == "mriqc" ]]; then
 		local killjob_factors=".85,.25"
@@ -673,6 +675,7 @@ walltime=""
 inode="False"
 prefix=''
 bids_filter_file=""
+aroma="True"
 
 # initialize flags
 while [[ "$#" -gt 0 ]]; do
@@ -776,6 +779,8 @@ while [[ "$#" -gt 0 ]]; do
 		inode="True" ;;
 	--bids-filter-file)
 		bids_filter_file="$2"; shift ;;
+	--no-aroma)
+		aroma="False" ;;
   esac
   shift
 done
