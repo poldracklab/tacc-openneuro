@@ -511,7 +511,7 @@ check_results () {
 		mapfile -t find_work_dir < <(find "$work_dir" -maxdepth 1 -type d -name "${raw_ds}*")
 		sample=($(shuf -e  "${find_work_dir[@]}" -n "$sample_size"))
 		du_out=$(du -shc --inode -B1 "${sample[@]}")
-		actual_sample_size=${#find_work_dir[@]}
+		actual_sample_size=${#sample[@]}
 		echo
 		echo "Inodes:"
 		echo "$du_out"
@@ -554,6 +554,10 @@ clone_derivatives () {
 	
 	mv "$derivatives_inprocess_path" "$derivatives_final_path"
 	cd "$derivatives_final_path" || exit
+	version=$(jq -r '.GeneratedBy[0].Version' dataset_description.json)
+	sed -i "s/vVERSION/v${version}/g" README.md
+	datalad save -m "update version in README.md"
+	
 	git config --file .gitmodules --replace-all submodule.code/containers.url https://github.com/ReproNim/containers.git
 	git config --file .gitmodules --unset-all submodule.code/containers.datalad-url
 	if grep -q "OpenNeuroForks" .git/config; then
