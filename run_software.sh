@@ -636,10 +636,8 @@ rsync_containers_templateflow () {
 
 # initialize variables
 user_email="jbwexler@tutanota.com"
-software="$1"
 STAGING="$SCRATCH/openneuro_derivatives"
 OPENNEURO="/corral-repl/utexas/poldracklab/data/OpenNeuro"
-work_dir="$SCRATCH/work_dir/$software"
 RAW="$OPENNEURO/raw"
 fs_license=$HOME/.freesurfer.txt # this should be in code/license
 fsaverage="$OPENNEURO/software/fsaverage"
@@ -684,11 +682,15 @@ aroma="True"
 # initialize flags
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
+	-f|--fmriprep)
+		software="fmriprep" ;;
+	-m|--mriqc)
+		software="mriqc" ;;
 	--no-syn-sdc)
 		syn_sdc="False" ;;
 	--skull-strip-t1w)
 		skull_strip="$2"; shift ;;
-	--sub-list)
+	-s|--sub-list)
 		all_subs_arg="$2"; shift ;;
 	--subs-per-job)
 		subs_per_job="$2"; shift ;;
@@ -696,7 +698,7 @@ while [[ "$#" -gt 0 ]]; do
 		subs_per_node="$2"; shift ;;
 	--dataset-file)
 		dataset_list=$(cat "$2"); shift ;;
-	--dataset)
+	-d|--dataset)
 		dataset_list="${2//,/$'\n'}"; shift ;;
 	--dataset-all)
 		dataset_list=$(find "$STAGING"/derivatives/"$software"/ -maxdepth 1 -name "ds*" | sed -r 's/.*(ds......).*/\1/g') ;;
@@ -721,9 +723,9 @@ while [[ "$#" -gt 0 ]]; do
 	--clone)
 		clone_derivatives="True"
 		download_create_run="False" ;;
-	--ignore-check)
+	-i|--ignore-check)
 		ignore_check="True" ;;
-	--push)
+	-p|--push)
 		download_create_run="False"
 		push="True" ;;
 	--remaining)
@@ -801,6 +803,8 @@ if [ -z "$walltime" ]; then
                 walltime="8:00:00"
 	fi
 fi
+
+work_dir="$SCRATCH/work_dir/$software"
 
 # run full pipeline
 if [[ "$download_create_run" == "True" ]]; then
