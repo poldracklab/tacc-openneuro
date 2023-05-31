@@ -250,8 +250,8 @@ run_software () {
 	
 	datalad save -r -m "pre-run save"
 
-	export SINGULARITYENV_TEMPLATEFLOW_HOME="$derivatives_scratch_path/sourcedata/templateflow/"
-	export SINGULARITYENV_TEMPLATEFLOW_USE_DATALAD="true"
+	export APPTAINERENV_TEMPLATEFLOW_HOME="$derivatives_scratch_path/sourcedata/templateflow/"
+	export APPTAINERENV_TEMPLATEFLOW_USE_DATALAD="true"
 	# Submit jobs via reproman in batches 
 	local count=0
 	echo "$all_subs" | xargs -n "$subs_per_job" echo | while read -r line; do 
