@@ -628,10 +628,10 @@ rsync_containers_templateflow () {
 	if [[ "$diff" -gt $((5 * 24 * 60 * 60)) ]] || [[ "rsync" == "True" ]]; then
 		rsync -av --delete "$OPENNEURO/software/containers" "$STAGING" --include ".*"
 		rsync -av --delete "$OPENNEURO/software/templateflow" "$STAGING" --include ".*"
+		find "$STAGING/containers" -exec touch -h {} +
+	    find "$STAGING/templateflow" -exec touch -h {} +
 		echo "$now" > "$rsync_timestamp"
         fi
-	find "$STAGING/containers" -exec touch -h {} +
-        find "$STAGING/templateflow" -exec touch -h {} +
 }
 
 # initialize variables
