@@ -54,14 +54,14 @@ download_raw_ds () {
 		find "$raw_corral_path" -type d -print0 | xargs --null setfacl -R -m d:g:G-802037:rwX
 
 		cd "$raw_corral_path" || exit
-		find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
+		find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\|dwi\)\(\.nii\|.bval\|.bvec\)\(\.gz\)?" \
 			-exec datalad get {} +
 		git annex fsck
 	else
 		# Update
 		cd "$raw_corral_path" || exit			
 		datalad update -s origin --merge
-		find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
+		find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\|dwi\)\(\.nii\|.bval\|.bvec\)\(\.gz\)?" \
 			-exec datalad get {} + 
 	fi
 }
@@ -252,6 +252,9 @@ run_software () {
 
 	export APPTAINERENV_TEMPLATEFLOW_HOME="$derivatives_scratch_path/sourcedata/templateflow/"
 	export APPTAINERENV_TEMPLATEFLOW_USE_DATALAD="true"
+	export MPLCONFIGDIR="$SCRATCH/mpl_config_dir/${raw_ds}-${software}"
+        mkdir -p "$MPLCONFIGDIR"
+	
 	# Submit jobs via reproman in batches 
 	local count=0
 	echo "$all_subs" | xargs -n "$subs_per_job" echo | while read -r line; do 
