@@ -253,7 +253,7 @@ run_software () {
 	export APPTAINERENV_TEMPLATEFLOW_HOME="$derivatives_scratch_path/sourcedata/templateflow/"
 	export APPTAINERENV_TEMPLATEFLOW_USE_DATALAD="true"
 	export MPLCONFIGDIR="$SCRATCH/mpl_config_dir/${raw_ds}-${software}"
-        mkdir -p "$MPLCONFIGDIR"
+    mkdir -p "$MPLCONFIGDIR"
 	
 	# Submit jobs via reproman in batches 
 	local count=0
@@ -382,7 +382,7 @@ check_results () {
 				fi
 				
 				# get runtime
-				local start_time; start_time=$(head "$stdout" | sed -rn 's|.*([0-9]{2})([0-9]{2})([0-9]{2})-([0-9]{2}):([0-9]{2}):([0-9]{2}),.*|20\1-\2-\3 \4:\5:\6|p' )
+				local start_time; start_time=$(head "$stdout" | sed -rn 's|.*([0-9]{2})([0-9]{2})([0-9]{2})-([0-9]{2}):([0-9]{2}):([0-9]{2}),.*|20\1-\2-\3 \4:\5:\6|p' | tail -n1 )
 				local end_time; end_time=$(tail -20 "$stdout" | sed -rn 's|.*([0-9]{2})([0-9]{2})([0-9]{2})-([0-9]{2}):([0-9]{2}):([0-9]{2}),.*|20\1-\2-\3 \4:\5:\6|p' | tail -n1 )
 				local start_sec; start_sec=$(date --date "$start_time" +%s)
 				local end_sec; end_sec=$(date --date "$end_time" +%s)
