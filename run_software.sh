@@ -171,11 +171,7 @@ setup_scratch_ds () {
 		fi
 	done
 	datalad clone -d . --reckless ephemeral "$raw_scratch_path" sourcedata/raw
-	if [[ "$freesurfer_6" == "True" ]]; then
-		datalad clone -d . --reckless ephemeral "$STAGING/containers_freesurfer6" code/containers
-	else
-		datalad clone -d . --reckless ephemeral "$STAGING/containers" code/containers
-	fi
+	datalad install code/containers
 	datalad clone -d . --reckless ephemeral "$STAGING/templateflow" sourcedata/templateflow
 	for sub_ds in "$STAGING"/templateflow/tpl*; do
 		datalad clone  --reckless ephemeral -d . "$sub_ds" sourcedata/templateflow/"$(basename "$sub_ds")"
@@ -191,6 +187,12 @@ run_software () {
 	get_subs "$raw_ds"
 	
 	cd "$derivatives_scratch_path" || exit
+	
+	if [[ -L code/containers/.git/annex ]]; then
+		chmod -R 775 code/containers
+		rm -rf code/containers
+		datalad clone -d . https://github.com/ReproNim/containers.git code/containers
+	fi
 
 	if [[ "$software" == "fmriprep" ]]; then
 		local killjob_factors=".85,.25"
@@ -629,12 +631,13 @@ rsync_containers_templateflow () {
         fi
 	diff=$(expr $now - $last_run)
 	if [[ "$diff" -gt $((5 * 24 * 60 * 60)) ]] || [[ "rsync" == "True" ]]; then
-		rsync -av --delete "$OPENNEURO/software/containers" "$STAGING" --include ".*"
+		rsync -av --delete "$OPENNEURO/software/containers/.git/annex/" "$STAGING/annexes/containers" --include ".*"
+		chmod -R 775 "$STAGING/annexes"
 		rsync -av --delete "$OPENNEURO/software/templateflow" "$STAGING" --include ".*"
-		find "$STAGING/containers" -exec touch -h {} +
-	    find "$STAGING/templateflow" -exec touch -h {} +
+		find "$STAGING/templateflow" -exec touch -h {} +
+		find "$STAGING/annexes" -exec touch -h {} +
 		echo "$now" > "$rsync_timestamp"
-        fi
+	fi
 }
 
 # initialize variables
@@ -811,7 +814,7 @@ work_dir="$SCRATCH/work_dir/$software"
 
 # run full pipeline
 if [[ "$download_create_run" == "True" ]]; then
-	rsync_containers_templateflow	
+	rsync_containers_templateflow
 	while IFS= read -r raw_ds; do  
 		if [[ "$skip_push" == "False" ]]; then
 			if [ -d "$STAGING/derivatives/$software/${raw_ds}-${software}" ]; then
