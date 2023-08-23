@@ -254,8 +254,7 @@ run_software () {
 
 	export APPTAINERENV_TEMPLATEFLOW_HOME="$derivatives_scratch_path/sourcedata/templateflow/"
 	export APPTAINERENV_TEMPLATEFLOW_USE_DATALAD="true"
-	export MPLCONFIGDIR="$SCRATCH/mpl_config_dir/${raw_ds}-${software}"
-    mkdir -p "$MPLCONFIGDIR"
+	export APPTAINERENV_MPLCONFIGDIR="/tmp/matplotlib-config"
 	
 	# Submit jobs via reproman in batches 
 	local count=0
