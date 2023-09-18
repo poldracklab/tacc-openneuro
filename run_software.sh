@@ -805,7 +805,7 @@ fi
 
 if [ -z "$walltime" ]; then
 	if [[ "$software" == "fmriprep" ]]; then
-                walltime="48:00:00"
+                walltime="16:00:00"
 	elif [[ "$software" == "mriqc" ]]; then
                 walltime="8:00:00"
 	fi
