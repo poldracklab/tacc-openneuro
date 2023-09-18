@@ -171,7 +171,7 @@ setup_scratch_ds () {
 		fi
 	done
 	datalad clone -d . --reckless ephemeral "$raw_scratch_path" sourcedata/raw
-	datalad install code/containers
+	datalad clone -d . "$STAGING/containers" code/containers
 	datalad clone -d . --reckless ephemeral "$STAGING/templateflow" sourcedata/templateflow
 	for sub_ds in "$STAGING"/templateflow/tpl*; do
 		datalad clone  --reckless ephemeral -d . "$sub_ds" sourcedata/templateflow/"$(basename "$sub_ds")"
@@ -191,7 +191,7 @@ run_software () {
 	if [[ -L code/containers/.git/annex ]]; then
 		chmod -R 775 code/containers
 		rm -rf code/containers
-		datalad clone -d . https://github.com/ReproNim/containers.git code/containers
+		datalad clone -d . "$STAGING/containers" code/containers
 	fi
 
 	if [[ "$software" == "fmriprep" ]]; then
@@ -633,6 +633,8 @@ rsync_containers_templateflow () {
 		rsync -av --delete "$OPENNEURO/software/containers/.git/annex/" "$STAGING/annexes/containers" --include ".*"
 		chmod -R 775 "$STAGING/annexes"
 		rsync -av --delete "$OPENNEURO/software/templateflow" "$STAGING" --include ".*"
+		rsync -av --delete "$OPENNEURO/software/containers" "$STAGING" --include ".*"
+		find "$STAGING/containers" -exec touch -h {} +
 		find "$STAGING/templateflow" -exec touch -h {} +
 		find "$STAGING/annexes" -exec touch -h {} +
 		echo "$now" > "$rsync_timestamp"
@@ -682,7 +684,7 @@ walltime=""
 inode="False"
 prefix=''
 bids_filter_file=""
-aroma="True"
+aroma="False"
 
 # initialize flags
 while [[ "$#" -gt 0 ]]; do
@@ -790,8 +792,8 @@ while [[ "$#" -gt 0 ]]; do
 		inode="True" ;;
 	--bids-filter-file)
 		bids_filter_file="$2"; shift ;;
-	--no-aroma)
-		aroma="False" ;;
+	--use-aroma)
+		aroma="True" ;;
   esac
   shift
 done
