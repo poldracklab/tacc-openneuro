@@ -244,9 +244,9 @@ run_software () {
 		if [[ -L "$derivatives_scratch_path/sub-${sub}.html" ]] || [[ -f "$derivatives_scratch_path/sub-${sub}.html" ]]; then
 			rm -rf "$derivatives_scratch_path/sub-${sub}.html"
 		fi
-		if [[ -f "$work_dir/${raw_ds}_sub-${sub}".tar ]]; then
-			tar -xvf "$work_dir/${raw_ds}_sub-${sub}".tar -C /  && rm -rf "$work_dir/${raw_ds}_sub-${sub}".tar
-			find "$work_dir/${raw_ds}_sub-${sub}" -type f -exec touch {} +
+		if [[ -f "$work_dir_scratch/${raw_ds}_sub-${sub}_0".tar ]]; then
+			tar -xvf "$work_dir_scratch/${raw_ds}_sub-${sub}_0".tar -C /  && rm -rf "$work_dir/${raw_ds}_sub-${sub}_0".tar
+			find "$work_dir_scratch/${raw_ds}_sub-${sub}_0" -type f -exec touch {} +
 		fi
 	done
 	
@@ -280,7 +280,7 @@ run_software () {
 			--jp job_name="${raw_ds}-${software}" --jp mail_type=END --jp mail_user="$user_email" \
 			--jp "container=code/containers/bids-${software}" --jp killjob_factors="$killjob_factors" \
 			sourcedata/raw "$derivatives_scratch_path" participant --participant-label '{p[sub]}' \
-			-w "$work_dir/${raw_ds}_sub-{p[sub]}" -vv "${command[@]}"
+			-w "/node_tmp/work_dir/${software}/${raw_ds}_sub-{p[sub]}" -vv "${command[@]}"
 										
 		echo
 	done
@@ -498,21 +498,21 @@ check_results () {
 	
 	if [[ "$purge" == "True" ]]; then
 		for sub in "${success_sub_array[@]-}"; do
-			rm -rf "$work_dir/${raw_ds}_sub-$sub"
+			rm -rf "$work_dir_scratch/${raw_ds}_sub-$sub"
 		done
 	fi
 	if [[ "$tar" == "True" ]]; then
 		for sub in "${failed_sub_array[@]-}"; do
 			echo "$sub"
-			if [[ -d "$work_dir/${raw_ds}_sub-$sub" ]]; then
-				tar -cvf "$work_dir/${raw_ds}_sub-$sub".tar "$work_dir/${raw_ds}_sub-$sub" 
-				rm -rf "$work_dir/${raw_ds}_sub-$sub"
+			if [[ -d "$work_dir_scratch/${raw_ds}_sub-${sub}_0" ]]; then
+				tar -cvf "$work_dir_scratch/${raw_ds}_sub-${sub}_0".tar "$work_dir/${raw_ds}_sub-${sub}_0" 
+				rm -rf "$work_dir_scratch/${raw_ds}_sub-${sub}_0"
 			fi
 		done
 	fi
 	if [[ "$inode" == "True" ]]; then
 		sample_size=5
-		mapfile -t find_work_dir < <(find "$work_dir" -maxdepth 1 -type d -name "${raw_ds}*")
+		mapfile -t find_work_dir < <(find "$work_dir_scratch" -maxdepth 1 -type d -name "${raw_ds}*")
 		sample=($(shuf -e  "${find_work_dir[@]}" -n "$sample_size"))
 		du_out=$(du -shc --inode -B1 "${sample[@]}")
 		actual_sample_size=${#sample[@]}
@@ -585,7 +585,7 @@ clone_derivatives () {
 		chmod -R 775 "$derivatives_scratch_path"
 		rm -rf "$derivatives_scratch_path"
 	fi
-	rm -rf "$SCRATCH/work_dir/$software/$raw_ds"*
+	rm -rf "$work_dir_scratch/$raw_ds"*
 }
 
 group () {
@@ -798,6 +798,9 @@ while [[ "$#" -gt 0 ]]; do
   shift
 done
 
+work_dir_scratch="$SCRATCH/work_dir/$software/_0"
+work_dir_tmp="/tmp/work_dir/$software"
+
 if [ -z "$dataset_list" ]; then
 	echo "No datasets list provided"
 	exit 1
@@ -811,7 +814,6 @@ if [ -z "$walltime" ]; then
 	fi
 fi
 
-work_dir="$SCRATCH/work_dir/$software"
 
 # run full pipeline
 if [[ "$download_create_run" == "True" ]]; then
