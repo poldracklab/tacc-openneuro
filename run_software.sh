@@ -241,9 +241,7 @@ run_software () {
 		if [[ -d "$derivatives_scratch_path/sub-${sub}" ]]; then
 			rm -rf "$derivatives_scratch_path/sub-${sub}"
 		fi
-		if [[ -L "$derivatives_scratch_path/sub-${sub}.html" ]] || [[ -f "$derivatives_scratch_path/sub-${sub}.html" ]]; then
-			rm -rf "$derivatives_scratch_path/sub-${sub}.html"
-		fi
+		rm -rf "$derivatives_scratch_path/sub-${sub}"*.html
 		if [[ -f "$work_dir_scratch/${raw_ds}_sub-${sub}_0".tar ]]; then
 			tar -xvf "$work_dir_scratch/${raw_ds}_sub-${sub}_0".tar -C /  && rm -rf "$work_dir/${raw_ds}_sub-${sub}_0".tar
 			find "$work_dir_scratch/${raw_ds}_sub-${sub}_0" -type f -exec touch {} +
