@@ -11,11 +11,12 @@ import argparse
 import pandas as pd
 from datetime import datetime, timedelta
 import datalad.api as dl
+import requests
 
 # first argument is comma-separated list of datasets to iterate through
 
 RAW_PATH = "/corral-repl/utexas/poldracklab/data/OpenNeuro/raw/"
-MOSAICS_PATH = "/corral-repl/utexas/poldracklab/data/OpenNeuro/mosaics/mosaics"
+MOSAICS_PATH = "/corral-repl/utexas/poldracklab/data/OpenNeuro/mosaics/"
 CSV_URL = "https://raw.githubusercontent.com/jbwexler/openneuro_metadata/main/metadata.csv"
 
 def make_mosaic(ds, ds_path, out_path):
@@ -63,19 +64,48 @@ def make_mosaic(ds, ds_path, out_path):
             x=0
             y=0
     
-    pdf.output(os.path.join('mosaics', ds + "_mosaic.pdf"))
+    pdf.output(os.path.join(MOSAICS_PATH, 'mosaics', ds + "_mosaic.pdf"))
     shutil.rmtree(tmp_dir)
     
 def install_datasets(ds_list):
+    ds_list_dl = ds_list
     for ds in ds_list:
         ds_source = "https://github.com/OpenNeuroDatasets/%s.git" % ds
         ds_path = os.path.join(RAW_PATH, ds)
-        if os.path.isdir(ds_path):
+        today_str = datetime.today().strftime('%Y-%m-%d')
+        failed_install_list = []
+        failed_get_list = []
+        
+        if requests.get(ds_source).status_code == 404:
+            failed_install_list.append(ds)
+            ds_list_dl.remove(ds)
+            continue  
+        elif os.path.isdir(ds_path):
             dl.update(dataset=ds_path, sibling="origin")
         else:
-            dl.install(path=ds_path, source=ds_source)
-        for nii_path in glob.glob(os.path.join(ds_path,"sub-*/**/anat/*.nii*"), recursive=True):
-            dl.get(nii_path, dataset=ds_path)
+            try:
+                dl.install(path=ds_path, source=ds_source)
+            except:
+                failed_install_list.append(ds)
+                ds_list_dl.remove(ds)
+                continue
+                                
+        try:
+            for nii_path in glob.glob(os.path.join(ds_path,"sub-*/**/anat/*.nii*"), recursive=True):
+                dl.get(nii_path, dataset=ds_path)
+        except:
+            failed_get_list.append(ds)
+            ds_list_dl.remove(ds)
+
+    if failed_install_list:
+        failed_install_log = os.path.join(MOSAICS_PATH, "logs", "download_get", "failed_install_" + today_str)
+        with open(failed_install_log, "w") as outfile:
+            outfile.write("\n".join(str(i) for i in failed_install_list))
+    if failed_get_list:
+        failed_get_log = os.path.join(MOSAICS_PATH, "logs", "download_get", "failed_get_" + today_str)
+        with open(failed_get_log, "w") as outfile:
+            outfile.write("\n".join(str(i) for i in failed_get_list))
+    return ds_list_dl
 
 def ds_list_from_csv(since_date):
     df = pd.read_csv(CSV_URL)
@@ -93,6 +123,7 @@ def main():
     parser.add_argument('-j', '--job', action='store_true')
     parser.add_argument('-x', '--skip-download', action='store_true')   
     args = parser.parse_args()
+    today_str = datetime.today().strftime('%Y-%m-%d')
         
     if args.dataset_list is not None:
         ds_list = args.dataset_list.split(',')
@@ -104,12 +135,12 @@ def main():
         ds_list = ds_list_from_csv(since_date)
     
     if not args.skip_download:
-        install_datasets(ds_list)
+        ds_list = install_datasets(ds_list)
 
     if args.local:
         for ds in ds_list:
             ds_path = os.path.join(RAW_PATH, ds)
-            out_path = os.path.join(MOSAICS_PATH, ds)
+            out_path = os.path.join(MOSAICS_PATH, "mosaics", ds)
             make_mosaic(ds, ds_path, out_path)
     elif args.job:
         file_path = os.path.realpath(__file__)
@@ -118,13 +149,16 @@ def main():
         for ds in ds_list:
             line = "python %s -ld %s" % (file_path, ds)
             launcher_list.append(line)
-        with open("mosaics_launcher", "w") as outfile:
+        with open(os.path.join(MOSAICS_PATH, "mosaics_launcher"), "w") as outfile:
             outfile.write("\n".join(str(i) for i in launcher_list))
-        today_str = datetime.today().strftime('%Y-%m-%d')
         job_name = "mosaics_" + today_str
         slurm_path = os.path.join(file_dir, "mosaics.slurm")
         command = "sbatch -J %s %s" % (job_name, slurm_path)
         subprocess.run(command, shell=True)
+        
+    with open(os.path.join(MOSAICS_PATH, "logs", "ds_list", "ds_list_" + today_str), "w") as outfile:
+        outfile.write("\n".join(str(i) for i in ds_list))
+    
     
 if __name__ == "__main__":
     main()
