@@ -9,7 +9,7 @@ import subprocess
 from fpdf import FPDF
 import argparse
 import pandas as pd
-import datetime
+from datetime import datetime, timedelta
 import datalad.api as dl
 
 # first argument is comma-separated list of datasets to iterate through
@@ -87,21 +87,25 @@ def ds_list_from_csv(since_date):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--dataset-list', type=str)
-    parser.add_argument('-r', '--recent-snapshots', type=str)
+    parser.add_argument('-r', '--recent-snapshots', type=int, help="Includes datasets modified/published in the past provided # of days.")
+    parser.add_argument('-s', '--snapshots-since', type=str, help="Includes datasets since provided date (MM/DD/YYYY).")
     parser.add_argument('-l', '--local', action='store_true')
     parser.add_argument('-j', '--job', action='store_true')
-    parser.add_argument('-s', '--skip-download', action='store_true')   
+    parser.add_argument('-x', '--skip-download', action='store_true')   
     args = parser.parse_args()
         
     if args.dataset_list is not None:
         ds_list = args.dataset_list.split(',')
     elif args.recent_snapshots is not None:
-        since_date = datetime.datetime.strptime(args.recent_snapshots, '%m/%d/%Y')
+        since_date = datetime.today() - timedelta(days=args.recent_snapshots)
+        ds_list = ds_list_from_csv(since_date)
+    elif args.snapshots_since is not None:
+        since_date = datetime.strptime(args.snapshots_since, '%m/%d/%Y')
         ds_list = ds_list_from_csv(since_date)
     
     if not args.skip_download:
         install_datasets(ds_list)
-    
+
     if args.local:
         for ds in ds_list:
             ds_path = os.path.join(RAW_PATH, ds)
@@ -116,9 +120,11 @@ def main():
             launcher_list.append(line)
         with open("mosaics_launcher", "w") as outfile:
             outfile.write("\n".join(str(i) for i in launcher_list))
-        command = "sbatch %s" % os.path.join(file_dir, "mosaics.slurm")
-        subprocess.run(command, shell=True, check=True)
-        
+        today_str = datetime.today().strftime('%Y-%m-%d')
+        job_name = "mosaics_" + today_str
+        slurm_path = os.path.join(file_dir, "mosaics.slurm")
+        command = "sbatch -J %s %s" % (job_name, slurm_path)
+        subprocess.run(command, shell=True)
     
 if __name__ == "__main__":
     main()
