@@ -640,7 +640,7 @@ rsync_containers_templateflow () {
 }
 
 # initialize variables
-user_email="jbwexler@tutanota.com"
+user_email="jbwexler@stanford.edu"
 STAGING="$SCRATCH/openneuro_derivatives"
 OPENNEURO="/corral-repl/utexas/poldracklab/data/OpenNeuro"
 RAW="$OPENNEURO/raw"
