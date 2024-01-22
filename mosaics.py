@@ -18,6 +18,7 @@ import requests
 RAW_PATH = "/corral-repl/utexas/poldracklab/data/OpenNeuro/raw/"
 MOSAICS_PATH = "/corral-repl/utexas/poldracklab/data/OpenNeuro/mosaics/"
 CSV_URL = "https://raw.githubusercontent.com/jbwexler/openneuro_metadata/main/metadata.csv"
+DATE_FORMAT = '%Y-%m-%d'
 
 def make_mosaic(ds, ds_path, out_path):
     tmp_dir = "tmp_" + ds
@@ -72,7 +73,7 @@ def install_datasets(ds_list):
     for ds in ds_list:
         ds_source = "https://github.com/OpenNeuroDatasets/%s.git" % ds
         ds_path = os.path.join(RAW_PATH, ds)
-        today_str = datetime.today().strftime('%Y-%m-%d')
+        today_str = datetime.today().strftime(DATE_FORMAT)
         failed_install_list = []
         failed_get_list = []
         
@@ -109,21 +110,21 @@ def install_datasets(ds_list):
 
 def ds_list_from_csv(since_date):
     df = pd.read_csv(CSV_URL)
-    df["Most recent snapshot date (MM/DD/YYYY)"] = pd.to_datetime(df["Most recent snapshot date (MM/DD/YYYY)"], format='%m/%d/%Y')
-    since_df = df.loc[df["Most recent snapshot date (MM/DD/YYYY)"] >= since_date]
-    ds_list = since_df["Accession Number"].to_list()
+    df.most_recent_snapshot = pd.to_datetime(df.most_recent_snapshot, format=DATE_FORMAT)
+    since_df = df.loc[df.most_recent_snapshot >= since_date]
+    ds_list = since_df.accession_number.to_list()
     return ds_list
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--dataset-list', type=str)
     parser.add_argument('-r', '--recent-snapshots', type=int, help="Includes datasets modified/published in the past provided # of days.")
-    parser.add_argument('-s', '--snapshots-since', type=str, help="Includes datasets since provided date (MM/DD/YYYY).")
+    parser.add_argument('-s', '--snapshots-since', type=str, help="Includes datasets since provided date (YYYY-MM-DD).")
     parser.add_argument('-l', '--local', action='store_true')
     parser.add_argument('-j', '--job', action='store_true')
     parser.add_argument('-x', '--skip-download', action='store_true')   
     args = parser.parse_args()
-    today_str = datetime.today().strftime('%Y-%m-%d')
+    today_str = datetime.today().strftime(DATE_FORMAT)
         
     if args.dataset_list is not None:
         ds_list = args.dataset_list.split(',')
@@ -131,7 +132,7 @@ def main():
         since_date = datetime.today() - timedelta(days=args.recent_snapshots)
         ds_list = ds_list_from_csv(since_date)
     elif args.snapshots_since is not None:
-        since_date = datetime.strptime(args.snapshots_since, '%m/%d/%Y')
+        since_date = datetime.strptime(args.snapshots_since, DATE_FORMAT)
         ds_list = ds_list_from_csv(since_date)
     
     if not args.skip_download:
