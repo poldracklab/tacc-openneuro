@@ -118,6 +118,7 @@ def ds_list_from_csv(since_date):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--dataset-list', type=str)
+    parser.add_argument('-f', '--dataset-list-file', type=str)
     parser.add_argument('-r', '--recent-snapshots', type=int, help="Includes datasets modified/published in the past provided # of days.")
     parser.add_argument('-s', '--snapshots-since', type=str, help="Includes datasets since provided date (YYYY-MM-DD).")
     parser.add_argument('-l', '--local', action='store_true')
@@ -128,6 +129,9 @@ def main():
         
     if args.dataset_list is not None:
         ds_list = args.dataset_list.split(',')
+    elif args.dataset_list_file is not None:
+        with open(args.dataset_list_file) as file:
+            ds_list = file.read().splitlines()
     elif args.recent_snapshots is not None:
         since_date = datetime.today() - timedelta(days=args.recent_snapshots)
         ds_list = ds_list_from_csv(since_date)
