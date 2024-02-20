@@ -45,9 +45,10 @@ get_subs () {
 download_raw_ds () {
 	local raw_ds="$1"
 	local raw_corral_path="$RAW/$raw_ds"
-	
+		
 	if [[ ! -d "$raw_corral_path" ]]; then
-		datalad clone https://github.com/OpenNeuroDatasets/"${raw_ds}".git "$raw_corral_path"
+		datalad clone https://github.com/OpenNeuroDatasets/"${raw_ds}".git "$raw_corral_path" \
+			|| return 1
 
 		# Ensure permissions for the group
 		setfacl -R -m g:G-802037:rwX "$raw_corral_path"
@@ -55,14 +56,14 @@ download_raw_ds () {
 
 		cd "$raw_corral_path" || exit
 		find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\|dwi\)\(\.nii\|.bval\|.bvec\)\(\.gz\)?" \
-			-exec datalad get {} +
+			-exec datalad get {} + || return 1
 		git annex fsck
 	else
 		# Update
 		cd "$raw_corral_path" || exit			
-		datalad update -s origin --merge
+		datalad update -s origin --merge || return 1
 		find sub-*/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\|dwi\)\(\.nii\|.bval\|.bvec\)\(\.gz\)?" \
-			-exec datalad get {} + 
+			-exec datalad get {} + || return 1
 	fi
 }
 
@@ -611,7 +612,7 @@ publish () {
 		fileprefix="${software}"/"${raw_ds}-${software}"/ autoenable=true publicurl=https://openneuro-derivatives.s3.amazonaws.com public=no
 	git annex export main --to openneuro-derivatives
 	git annex enableremote openneuro-derivatives publicurl=https://openneuro-derivatives.s3.amazonaws.com public=no
-	datalad create-sibling-github -d . OpenNeuroDerivatives/"${raw_ds}-${software}" --publish-depends openneuro-derivatives --access-protocol ssh --existing reconfigure --credential datalad.credential.helper
+	datalad create-sibling-github -d . OpenNeuroDerivatives/"${raw_ds}-${software}" --publish-depends openneuro-derivatives --access-protocol ssh --existing reconfigure --credential datalad.credential.https://github.com.helper
 	datalad push --to github -f checkdatapresent
 	gh repo edit OpenNeuroDerivatives/"${raw_ds}-${software}" --description ''
 	sleep 5
@@ -726,7 +727,7 @@ while [[ "$#" -gt 0 ]]; do
 		skip_setup_scratch="True" ;;
 	--skip-raw-clone)
 		skip_raw_clone="True" ;;
-	--clone)
+	-c|--clone)
 		clone_derivatives="True"
 		download_create_run="False" ;;
 	-i|--ignore-check)
@@ -826,7 +827,12 @@ if [[ "$download_create_run" == "True" ]]; then
 			fi
 		fi
 		if [[ "$skip_raw_download" == "False" ]]; then
-			download_raw_ds "$raw_ds"
+			skip_ds="False"
+			download_raw_ds "$raw_ds" || skip_ds="True"
+			if [[ "$skip_ds" == "True" ]]; then
+				echo "$raw_ds" >> "$STAGING/dl_issue.txt"
+				continue
+			fi
 		fi
 		if [[ "$skip_create_derivatives" == "False" ]]; then
 			create_derivatives_ds "$raw_ds"

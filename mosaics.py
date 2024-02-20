@@ -1,6 +1,5 @@
 import nibabel as nb
 from nilearn import plotting as nlp
-import sys
 import os
 import os.path
 import glob
@@ -155,14 +154,14 @@ def main():
             line = "python %s -ld %s" % (file_path, ds)
             launcher_list.append(line)
         with open(os.path.join(MOSAICS_PATH, "mosaics_launcher"), "w") as outfile:
-            outfile.write("\n".join(str(i) for i in launcher_list))
+            print(*launcher_list, sep="\n", file=outfile)
         job_name = "mosaics_" + today_str
         slurm_path = os.path.join(file_dir, "mosaics.slurm")
         command = "sbatch -J %s %s" % (job_name, slurm_path)
         subprocess.run(command, shell=True)
         
     with open(os.path.join(MOSAICS_PATH, "logs", "ds_list", "ds_list_" + today_str), "w") as outfile:
-        outfile.write("\n".join(str(i) for i in ds_list))
+        print(*ds_list, sep="\n", file=outfile)
     
     
 if __name__ == "__main__":
