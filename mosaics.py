@@ -11,6 +11,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import datalad.api as dl
 import requests
+import sys
 
 # first argument is comma-separated list of datasets to iterate through
 
@@ -137,6 +138,10 @@ def main():
     elif args.snapshots_since is not None:
         since_date = datetime.strptime(args.snapshots_since, DATE_FORMAT)
         ds_list = ds_list_from_csv(since_date)
+    
+    if not ds_list:
+        print("No datasets found")
+        sys.exit(0)
     
     if not args.skip_download:
         ds_list = install_datasets(ds_list)

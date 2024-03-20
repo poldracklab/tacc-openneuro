@@ -297,6 +297,7 @@ push () {
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 	find "$derivatives_scratch_path" -name ".proc*" -type f -delete
+	git -C "$derivatives_scratch_path" annex add .
 	datalad save -d "$derivatives_scratch_path" -m "pre-push save (scratch)"
 	datalad save -d "$derivatives_inprocess_path" -m "pre-push save (corral)"
 	datalad update --merge -d "$derivatives_inprocess_path" -s scratch
@@ -503,8 +504,9 @@ check_results () {
 	if [[ "$tar" == "True" ]]; then
 		for sub in "${failed_sub_array[@]-}"; do
 			echo "$sub"
+			echo "$work_dir_scratch/${raw_ds}_sub-${sub}_0"
 			if [[ -d "$work_dir_scratch/${raw_ds}_sub-${sub}_0" ]]; then
-				tar -cvf "$work_dir_scratch/${raw_ds}_sub-${sub}_0".tar "$work_dir/${raw_ds}_sub-${sub}_0" 
+				tar -cvf "$work_dir_scratch/${raw_ds}_sub-${sub}_0".tar "$work_dir_scratch/${raw_ds}_sub-${sub}_0" 
 				rm -rf "$work_dir_scratch/${raw_ds}_sub-${sub}_0"
 			fi
 		done
