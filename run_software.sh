@@ -236,16 +236,16 @@ run_software () {
 		git add -A
 		git diff-index --quiet HEAD || git commit -m "unlock freesurfer"
 	fi
-
+	
 	cd "$derivatives_scratch_path" || exit
 	for sub in $all_subs; do
 		if [[ -d "$derivatives_scratch_path/sub-${sub}" ]]; then
 			rm -rf "$derivatives_scratch_path/sub-${sub}"
 		fi
 		rm -rf "$derivatives_scratch_path/sub-${sub}"*.html
-		if [[ -f "$work_dir_scratch/${raw_ds}_sub-${sub}_0".tar ]]; then
-			tar -xvf "$work_dir_scratch/${raw_ds}_sub-${sub}_0".tar -C /  && rm -rf "$work_dir/${raw_ds}_sub-${sub}_0".tar
-			find "$work_dir_scratch/${raw_ds}_sub-${sub}_0" -type f -exec touch {} +
+		if [[ -f "$work_dir_scratch/${raw_ds}_sub-${sub}".tar ]]; then
+			tar -xvf "$work_dir_scratch/${raw_ds}_sub-${sub}".tar -C /  && rm -rf "$work_dir_scratch/${raw_ds}_sub-${sub}".tar
+			find "$work_dir_scratch/${raw_ds}_sub-${sub}" -type f -exec touch {} +
 		fi
 	done
 	
@@ -297,7 +297,7 @@ push () {
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 	find "$derivatives_scratch_path" -name ".proc*" -type f -delete
-	git -C "$derivatives_scratch_path" annex add .
+	git -C "$derivatives_scratch_path" annex add . --exclude "code/*" --exclude sourcedata/raw --exclude sourcedata/templateflow
 	datalad save -d "$derivatives_scratch_path" -m "pre-push save (scratch)"
 	datalad save -d "$derivatives_inprocess_path" -m "pre-push save (corral)"
 	datalad update --merge -d "$derivatives_inprocess_path" -s scratch
@@ -504,10 +504,9 @@ check_results () {
 	if [[ "$tar" == "True" ]]; then
 		for sub in "${failed_sub_array[@]-}"; do
 			echo "$sub"
-			echo "$work_dir_scratch/${raw_ds}_sub-${sub}_0"
-			if [[ -d "$work_dir_scratch/${raw_ds}_sub-${sub}_0" ]]; then
-				tar -cvf "$work_dir_scratch/${raw_ds}_sub-${sub}_0".tar "$work_dir_scratch/${raw_ds}_sub-${sub}_0" 
-				rm -rf "$work_dir_scratch/${raw_ds}_sub-${sub}_0"
+			if [[ -d "$work_dir_scratch/${raw_ds}_sub-${sub}" ]]; then
+				tar -cvf "$work_dir_scratch/${raw_ds}_sub-${sub}".tar "$work_dir_scratch/${raw_ds}_sub-${sub}" 
+				rm -rf "$work_dir_scratch/${raw_ds}_sub-${sub}"
 			fi
 		done
 	fi
@@ -802,7 +801,7 @@ while [[ "$#" -gt 0 ]]; do
   shift
 done
 
-work_dir_scratch="$SCRATCH/work_dir/$software/_0"
+work_dir_scratch="$SCRATCH/work_dir/$software/"
 work_dir_tmp="/tmp/work_dir/$software"
 
 if [ -z "$dataset_list" ]; then
