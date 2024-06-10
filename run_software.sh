@@ -209,6 +209,10 @@ run_software () {
 			command+=("--use-syn-sdc")
 			command+=("warn")
 		fi
+		if [[ "$ignore_jacobian" == "True" ]]; then
+			command+=("--ignore")
+			command+=("fmap-jacobian")
+		fi
 		if [ -n "$bids_filter_file" ]; then
 			bids_filter_full_path="$derivatives_scratch_path/code/$bids_filter_file"
 			command+=("--bids-filter-file")
@@ -297,7 +301,7 @@ push () {
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
 	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 	find "$derivatives_scratch_path" -name ".proc*" -type f -delete
-	git -C "$derivatives_scratch_path" annex add . --exclude "code/*" --exclude sourcedata/raw --exclude sourcedata/templateflow
+	git -C "$derivatives_scratch_path" annex add . --exclude "code/*" --exclude "sourcedata/raw/*" --exclude "sourcedata/templateflow/*"
 	datalad save -d "$derivatives_scratch_path" -m "pre-push save (scratch)"
 	datalad save -d "$derivatives_inprocess_path" -m "pre-push save (corral)"
 	datalad update --merge -d "$derivatives_inprocess_path" -s scratch
@@ -366,7 +370,7 @@ check_results () {
 				if ! grep -q "$success_phrase" "$stdout" || grep -q "did not finish successfully" "$stdout"; then
 					echo "$stdout (sub-$sub) failed "
 					failed_sub_array+=("$sub")
-				elif grep -iq "Error" "$stderr"; then
+				elif grep  -iP '(?<!Fontconfig )error' "$stderr"; then
 					echo "$stderr (sub-$sub) contains errors"
 					if [[ "$errors" == "True" ]]; then
 						grep -i "Error" "$stderr" | awk '!x[$0]++'
@@ -652,6 +656,7 @@ rsync_timestamp="$OPENNEURO/software/rsync_timestamp"
 
 syn_sdc="True"
 skull_strip="force"
+ignore_jacobian="False"
 subs_per_job="200"
 all_subs_arg=""
 subs_per_node=""
@@ -698,6 +703,8 @@ while [[ "$#" -gt 0 ]]; do
 		syn_sdc="False" ;;
 	--skull-strip-t1w)
 		skull_strip="$2"; shift ;;
+	--ignore-jacobian)
+		ignore_jacobian="True" ;;
 	-s|--sub-list)
 		all_subs_arg="$2"; shift ;;
 	--subs-per-job)
