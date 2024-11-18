@@ -227,7 +227,7 @@ run_software () {
 			local subs_per_node=5
 		fi
 		local mem_mb="$(( 150 / subs_per_node ))"
-		local command=("--nprocs" "11" "--ants-nthreads" "8" "--verbose-reports" "--dsname" "$raw_ds" "--mem_gb" "$mem_mb")
+		local command=("--nprocs" "11" "--ants-nthreads" "8" "--verbose-reports" "--dsname" "$raw_ds" "--mem_gb" "$mem_mb" "--notrack" "--no-sub")
 	fi
 	
 	if [[ -d "$fs_path" ]]; then
@@ -564,7 +564,11 @@ clone_derivatives () {
 	cd "$derivatives_final_path" || exit
 	version=$(jq -r '.GeneratedBy[0].Version' dataset_description.json)
 	sed -i "s/vVERSION/v${version}/g" README.md
-	datalad save -m "update version in README.md"
+	tmpfile=$(mktemp)
+	jq --arg name "${raw_ds}-${software}" '.Name = $name' dataset_description.json | jq '. += {"Authors": ["OpenNeuro Preprocessing Team"]}' > "$tmpfile"
+	mv -f "$tmpfile" dataset_description.json
+
+	datalad save -m "update README.md and dataset_description.json"
 	
 	git config --file .gitmodules --replace-all submodule.code/containers.url https://github.com/ReproNim/containers.git
 	git config --file .gitmodules --unset-all submodule.code/containers.datalad-url
@@ -609,12 +613,44 @@ group () {
 
 publish () {
 	local raw_ds="$1"
+	local ds_url
+	local derivatives_final_path="$OPENNEURO/$software/${raw_ds}-${software}"
+	local OpenNeuroDerivatives_path="$OPENNEURO/OpenNeuroDerivatives_github/OpenNeuroDerivatives"
+	
+	cd "$derivatives_final_path"
+
+	if ! datalad siblings -s origin; then
+		if [ -n "$publish_ds" ]; then
+			ds_url=$(python  "$OPENNEURO/software/tacc-openneuro/openneuro_graphql.py" -u -d "$publish_ds")
+		else
+			ds_url=$(python  "$OPENNEURO/software/tacc-openneuro/openneuro_graphql.py" -u -n)
+		fi
+		
+		git remote add origin "$ds_url"
+		git fetch origin
+		git merge origin/main --allow-unrelated-histories -s ours --no-edit
+		git annex merge
+	else
+		ds_url=$(datalad siblings -s origin | sed -n 's/.*\[\(https:\/\/[^ ]*\).*/\1/p')
+	fi
+	if ! datalad siblings -s openneuro; then
+		git annex initremote openneuro type=external externaltype=openneuro encryption=none url="$ds_url"
+	else
+		git annex enableremote openneuro type=external externaltype=openneuro encryption=none url="$ds_url"
+	fi
+
+	datalad siblings configure -s origin --publish-depends openneuro
+	datalad push --to origin 
+
+
+publish_to_github () {
+	local raw_ds="$1"
 	local derivatives_final_path="$OPENNEURO/$software/${raw_ds}-${software}"
 	local OpenNeuroDerivatives_path="$OPENNEURO/OpenNeuroDerivatives_github/OpenNeuroDerivatives"
 	
 	cd "$derivatives_final_path"
 	datalad siblings -s openneuro-derivatives || git-annex initremote openneuro-derivatives type=S3 bucket=openneuro-derivatives exporttree=yes versioning=yes partsize=1GiB encryption=none \
-		fileprefix="${software}"/"${raw_ds}-${software}"/ autoenable=true publicurl=https://openneuro-derivatives.s3.amazonaws.com public=no
+		fileprefix="${software}/${raw_ds}-${software}"/ autoenable=true publicurl=https://openneuro-derivatives.s3.amazonaws.com public=no
 	git annex export main --to openneuro-derivatives
 	git annex enableremote openneuro-derivatives publicurl=https://openneuro-derivatives.s3.amazonaws.com public=no
 	datalad create-sibling-github -d . OpenNeuroDerivatives/"${raw_ds}-${software}" --publish-depends openneuro-derivatives --access-protocol ssh --existing reconfigure --credential datalad.credential.https://github.com.helper
@@ -678,6 +714,8 @@ errors="False"
 purge="False"
 tar="False"
 publish="False"
+publish_ds=""
+publish_to_github="False"
 part="1"
 group="False"
 git_log_check="False"
@@ -767,6 +805,13 @@ while [[ "$#" -gt 0 ]]; do
 	--publish)
 		download_create_run="False"
 		publish="True" ;;
+	--publish-ds)
+		download_create_run="False"
+		publish="True"
+		publish_ds="$2"; shift ;;
+	--publish-to-github)
+		download_create_run="False"
+		publish_to_github="True" ;;
 	--group)
 		group="True"
 		download_create_run="False" ;;
@@ -888,9 +933,13 @@ elif [[ "$push" == "True" ]]; then
 		push "$raw_ds"
 	done <<< "$dataset_list"
 elif [[ "$publish" == "True" ]]; then
-	source /home1/03201/jbwexler/scripts/export_aws_keys.sh
 	while IFS= read -r raw_ds; do  
 		publish "$raw_ds"
+	done <<< "$dataset_list"
+elif [[ "$publish_to_github" == "True" ]]; then
+	source /home1/03201/jbwexler/scripts/export_aws_keys.sh
+	while IFS= read -r raw_ds; do  
+		publish_to_github "$raw_ds"
 	done <<< "$dataset_list"
 	datalad push -d $OPENNEURO/OpenNeuroDerivatives_github/OpenNeuroDerivatives --to github
 elif [[ "$group" == "True" ]]; then
