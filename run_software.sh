@@ -89,6 +89,7 @@ create_derivatives_ds () {
 		cp code/tacc-openneuro/README_"${software}".md README.md
 		cp code/tacc-openneuro/gitattributes_openneuro.txt .gitattributes
 		cp code/tacc-openneuro/gitattributes_datalad_openneuro.txt .datalad/.gitattributes
+		touch code/bids-filters.json
 		sed -i "s/ds000000/${raw_ds:0:8}/g" README.md
   
 		# Ensure permissions for the group
@@ -283,7 +284,8 @@ run_software () {
 			--jp job_name="${raw_ds}-${software}" --jp mail_type=END --jp mail_user="$user_email" \
 			--jp "container=code/containers/bids-${software}" --jp killjob_factors="$killjob_factors" \
 			sourcedata/raw "$derivatives_scratch_path" participant --participant-label '{p[sub]}' \
-			-w "/node_tmp/work_dir/${software}/${raw_ds}_sub-{p[sub]}" -vv "${command[@]}"
+			-w "/node_tmp/work_dir/${software}/${raw_ds}_sub-{p[sub]}" -vv "${command[@]}" \
+			--bids-filter-file "code/bids-filters.json" \
 										
 		echo
 	done
@@ -641,6 +643,7 @@ publish () {
 
 	datalad siblings configure -s origin --publish-depends openneuro
 	datalad push --to origin 
+}
 
 
 publish_to_github () {
