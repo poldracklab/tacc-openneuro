@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import os.path
 import os
 import requests
@@ -6,7 +8,6 @@ from dotenv import load_dotenv
 
 OPENNEURO_URL = 'https://openneuro.org/'
 DOTENV_PATH = '/corral/utexas/poldracklab/data/OpenNeuro/software/tacc-openneuro/openneuro_api_key_wbhi.env'
-
 
 def graphql_query(query, openneuro_url, openneuro_api_key):
     headers = {"Content-Type": "application/json"}
@@ -67,6 +68,9 @@ def publish(accession_number, openneuro_url, openneuro_api_key):
 
     return graphql_query(query, openneuro_url, openneuro_api_key)
 
+def validate(accession_number, openneuro_url, openneuro_api_key) -> bool:
+    
+
 def main():
     load_dotenv(dotenv_path=DOTENV_PATH)
     openneuro_api_key = os.getenv('OPENNEURO_API_KEY')
@@ -74,6 +78,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-u', '--upload', action='store_true', help='Upload dataset')
     parser.add_argument('-s', '--snapshot', action='store_true', help='Create initial snapshot')
+    parser.add_argument('-v', '--validated', action='store_true', help='True if validation complated')
     parser.add_argument('-p', '--publish', action='store_true', help='Publish snapshot')
     parser.add_argument('-n', '--new', action='store_true', help='New dataset')
     parser.add_argument('-d', '--dataset', type=str, help='Dataset number')
@@ -90,6 +95,9 @@ def main():
         response = snapshot(args.dataset, OPENNEURO_URL, openneuro_api_key)
     elif args.publish:
         response = publish(args.dataset, OPENNEURO_URL, openneuro_api_key)
+    elif args.validated:
+        response = validated(args.dataset, OPENNEURO_URL, openneuro_api_key)
+   
 
     print(response)
 

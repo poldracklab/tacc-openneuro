@@ -58,7 +58,7 @@ if f_sheet_not_gh:
        for ds in f_sheet_not_gh:
            cell = sheet.cell(get_dataset_row(ds), fmriprep_col)
            if cell.value == 's3':
-               sheet.update(cell.address, 'corral')
+               sheet.update_acell(cell.address, 'corral')
 
 m_sheet_not_gh = mriqc_s3 - mriqc_super
 if m_sheet_not_gh:
@@ -67,16 +67,16 @@ if m_sheet_not_gh:
        for ds in m_sheet_not_gh:
            cell = sheet.cell(get_dataset_row(ds), mriqc_col)
            if cell.value == 's3':
-               sheet.update(cell.address, 'corral') 
+               sheet.update_acell(cell.address, 'corral') 
 
 f_gh_not_sheet = fmriprep_nots3.intersection(fmriprep_super)
 if f_gh_not_sheet:
     print(f"fmriprep on github but not on sheet: {','.join(f_gh_not_sheet)}")
     if ask_user_fix():
-       for ds in f_gh_not_sheet:
-           cell = sheet.cell(get_dataset_row(ds), fmriprep_col)
-           if cell.value == 'corral':
-               sheet.update(cell.address, 's3')
+        for ds in f_gh_not_sheet:
+            cell = sheet.cell(get_dataset_row(ds), fmriprep_col)
+            if cell.value == 'corral':
+                sheet.update_acell(cell.address, 's3')
 
 m_gh_not_sheet = mriqc_nots3.intersection(mriqc_super)
 if m_gh_not_sheet:
@@ -85,4 +85,4 @@ if m_gh_not_sheet:
        for ds in m_gh_not_sheet:
            cell = sheet.cell(get_dataset_row(ds), mriqc_col)
            if cell.value == 'corral':
-               sheet.update(cell.address, 's3')
+               sheet.update_acell(cell.address, 's3')
