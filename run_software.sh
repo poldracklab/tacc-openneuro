@@ -89,7 +89,7 @@ create_derivatives_ds () {
 		cp code/tacc-openneuro/README_"${software}".md README.md
 		cp code/tacc-openneuro/gitattributes_openneuro.txt .gitattributes
 		cp code/tacc-openneuro/gitattributes_datalad_openneuro.txt .datalad/.gitattributes
-		touch code/bids-filters.json
+		echo "{}" > code/bids-filters.json
 		sed -i "s/ds000000/${raw_ds:0:8}/g" README.md
   
 		# Ensure permissions for the group
@@ -213,11 +213,6 @@ run_software () {
 		if [[ "$ignore_jacobian" == "True" ]]; then
 			command+=("--ignore")
 			command+=("fmap-jacobian")
-		fi
-		if [ -n "$bids_filter_file" ]; then
-			bids_filter_full_path="$derivatives_scratch_path/code/$bids_filter_file"
-			command+=("--bids-filter-file")
-			command+=("$bids_filter_full_path")
 		fi
 		if [[ "$aroma" == "True" ]]; then
 			command+=("--use-aroma")
@@ -729,7 +724,6 @@ ignore_errors="False"
 walltime=""
 inode="False"
 prefix=''
-bids_filter_file=""
 aroma="False"
 level="minimal"
 
@@ -846,8 +840,6 @@ while [[ "$#" -gt 0 ]]; do
 		prefix="$2"; shift ;;
 	--inode)
 		inode="True" ;;
-	--bids-filter-file)
-		bids_filter_file="$2"; shift ;;
 	--use-aroma)
 		aroma="True" ;;
 	--level)
