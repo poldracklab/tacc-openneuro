@@ -147,6 +147,7 @@ setup_scratch_ds () {
 		cheap_clone "$raw_corral_path" "$raw_scratch_path"
 	fi
 	cd "$raw_scratch_path" || exit
+	find "$derivatives_inprocess_path" -exec touch -h {} + # Ensure symlinks are up to date
 	for sub in $all_subs; do
 		if [ -d "sub-${sub}" ]; then
 			find "sub-${sub}"/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
@@ -581,7 +582,7 @@ clone_derivatives () {
 	datalad save -r -m "change gitmodule urls to origin"
 	datalad install . -r
 	
-	if [[ "$software" == "fmriprep" ]]; then
+	if [[ "$software" == "fmriprep" ]] && [ -d "$raw_path" ]; then
 		chmod -R 775 "$raw_path"
 		rm -rf "$raw_path"
 	fi
