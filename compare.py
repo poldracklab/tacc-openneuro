@@ -8,8 +8,7 @@ import sys
 """Compares datasets on Status sheet with status "s3" to those listed on the
 OpenNeuroDerivatives superdataset"""
 
-service_account_json = '/home1/03201/jbwexler/thermal-shuttle-364720-d11c29ce61ef.json'
-gc = gs.service_account(filename=service_account_json)
+gc = gs.oauth()
 sh = gc.open_by_url(
 'https://docs.google.com/spreadsheets/d/1pznoUWMFdgUELjj5P-h8kshuP8_aXCYsG15BimnhA38'
 )
