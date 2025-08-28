@@ -82,8 +82,12 @@ def install_datasets(ds_list):
             ds_list_dl.remove(ds)
             continue  
         elif os.path.isdir(ds_path):
-            dl.update(dataset=ds_path, sibling="origin")
-        else:
+            try:
+                dl.update(dataset=ds_path, sibling="origin", merge=True)
+            except:
+                command = f"chmod -R 775 {ds_path} && rm -rf {ds_path}"
+                subprocess.run(command, shell=True)
+        if not os.path.isdir(ds_path):
             try:
                 dl.install(path=ds_path, source=ds_source)
             except:
