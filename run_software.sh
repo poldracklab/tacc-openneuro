@@ -147,13 +147,14 @@ setup_scratch_ds () {
 		cheap_clone "$raw_corral_path" "$raw_scratch_path"
 	fi
 	cd "$raw_scratch_path" || exit
-	find "$derivatives_inprocess_path" -exec touch -h {} + # Ensure symlinks are up to date
+	find "$raw_corral_path/" -exec touch -h {} +
 	for sub in $all_subs; do
 		if [ -d "sub-${sub}" ]; then
 			find "sub-${sub}"/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
 				-exec datalad get {} +	
 		fi
 	done
+	find "$raw_scratch_path/" -exec touch -h {} +
 	
 	cheap_clone "$derivatives_inprocess_path" "$derivatives_scratch_path"
 	cd "$derivatives_scratch_path" || exit
