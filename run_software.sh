@@ -36,6 +36,13 @@ get_subs () {
                                 all_subs_arr+=("$sub")
 			fi
 		done <<< "$all_subs_temp"
+	elif [[ "$software" == "xcpd" ]]; then
+		fmriprep_path="$OPENNEURO/fmriprep/${raw_ds}-fmriprep"
+               	while read -r sub; do
+                        if [[ $(find "$raw_corral_path/sub-${sub}/" -wholename "*func") ]] && [[ $(find "$raw_corral_path/sub-${sub}/" -wholename "*anat") ]]; then
+                                all_subs_arr+=("$sub")
+			fi
+		done <<< "$all_subs_temp"
 	fi
 
 	printf -v all_subs '%s ' "${all_subs_arr[@]}"
@@ -84,7 +91,11 @@ create_derivatives_ds () {
 		datalad clone -d . https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
 		mkdir sourcedata
 		datalad clone -d . https://github.com/OpenNeuroDatasets/"${raw_ds}".git sourcedata/raw
-		datalad clone -d . https://github.com/templateflow/templateflow.git sourcedata/templateflow
+		if [[ "$software" == "xcpd" ]]; then
+			datalad clone -d . https://github.com/OpenNeuroDerivatives/"${raw_ds}-fmriprep".git sourcedata/fmriprep
+		else
+			datalad clone -d . https://github.com/templateflow/templateflow.git sourcedata/templateflow
+		fi
   
 		cp code/tacc-openneuro/README_"${software}".md README.md
 		cp code/tacc-openneuro/gitattributes_openneuro.txt .gitattributes
@@ -145,6 +156,12 @@ setup_scratch_ds () {
 		datalad update -d "$raw_scratch_path" -s origin --merge	
 	else
 		cheap_clone "$raw_corral_path" "$raw_scratch_path"
+
+		if [[ "$software" == "xcpd" ]]; then
+			fmriprep_corral_path="$OPENNEURO/fmriprep/${raw_ds}-fmriprep"
+			fmriprep_scratch_path="$STAGING/fmriprep/${raw_ds}-fmriprep"
+			cheap_clone "$fmriprep_corral_path" "$fmriprep_scratch_path"
+		fi
 	fi
 	cd "$raw_scratch_path" || exit
 	find "$raw_corral_path/" -exec touch -h {} +
@@ -176,10 +193,20 @@ setup_scratch_ds () {
 	done
 	datalad clone -d . --reckless ephemeral "$raw_scratch_path" sourcedata/raw
 	datalad clone -d . "$STAGING/containers" code/containers
-	datalad clone -d . --reckless ephemeral "$STAGING/templateflow" sourcedata/templateflow
-	for sub_ds in "$STAGING"/templateflow/tpl*; do
-		datalad clone  --reckless ephemeral -d . "$sub_ds" sourcedata/templateflow/"$(basename "$sub_ds")"
-	done
+
+	if [[ "$software" == "xcpd" ]]; then
+		datalad clone -d . --reckless ephemeral "$fmriprep_scratch_path" sourcedata/fmriprep
+
+		for sub in $all_subs; do
+			datalad get "sourcedata/fmriprep/sub-${sub}"
+		done
+	else
+		datalad clone -d . --reckless ephemeral "$STAGING/templateflow" sourcedata/templateflow
+		for sub_ds in "$STAGING"/templateflow/tpl*; do
+			datalad clone  --reckless ephemeral -d . "$sub_ds" sourcedata/templateflow/"$(basename "$sub_ds")"
+		done
+	fi
+	
 }
 
 # Run fmriprep or mriqc
@@ -226,6 +253,13 @@ run_software () {
 		fi
 		local mem_mb="$(( 150 / subs_per_node ))"
 		local command=("--nprocs" "11" "--ants-nthreads" "8" "--verbose-reports" "--dsname" "$raw_ds" "--mem_gb" "$mem_mb" "--notrack" "--no-sub")
+	elif [[ "$software" == "xcpd" ]]; then
+		local killjob_factors=".85,.25"
+		if [ -z "$subs_per_node" ]; then
+			local subs_per_node=28
+		fi
+		local mem_mb="$(( 150 / subs_per_node ))"
+		local command=("--mode" "abcd" "--motion-filter-type" "none" "--mem_gb" "$mem_mb" "--notrack")
 	fi
 	
 	if [[ -d "$fs_path" ]]; then
@@ -256,6 +290,12 @@ run_software () {
 	export APPTAINERENV_TEMPLATEFLOW_HOME="$derivatives_scratch_path/sourcedata/templateflow/"
 	export APPTAINERENV_TEMPLATEFLOW_USE_DATALAD="true"
 	export APPTAINERENV_MPLCONFIGDIR="/tmp/matplotlib-config"
+
+	if [[ "$software" == "xcpd" ]]; then
+		software_container="xcp-d"
+	else
+		software_container="$software"
+	fi
 	
 	# Submit jobs via reproman in batches 
 	local count=0
@@ -279,7 +319,7 @@ run_software () {
 			--jp num_processes="$processes" --jp num_nodes="$nodes" \
 			--jp walltime="$walltime" --jp queue="$queue" --jp launcher=true \
 			--jp job_name="${raw_ds}-${software}" --jp mail_type=END --jp mail_user="$user_email" \
-			--jp "container=code/containers/bids-${software}" --jp killjob_factors="$killjob_factors" \
+			--jp "container=code/containers/bids-${software_container}" --jp killjob_factors="$killjob_factors" \
 			sourcedata/raw "$derivatives_scratch_path" participant --participant-label '{p[sub]}' \
 			-w "/node_tmp/work_dir/${software}/${raw_ds}_sub-{p[sub]}" -vv "${command[@]}" \
 			--bids-filter-file "code/bids-filters.json" \
@@ -337,6 +377,8 @@ check_results () {
 		local success_phrase="MRIQC completed"
 	elif [[ "$software" == "fmriprep" ]]; then
 		local success_phrase="fMRIPrep finished successfully"
+	elif [[ "$software" == "xcpd" ]]; then
+		local success_phrase="XCP-D finished successfully!"
 	fi
 	
 	local reproman_logs
@@ -736,6 +778,8 @@ while [[ "$#" -gt 0 ]]; do
 		software="fmriprep" ;;
 	-m|--mriqc)
 		software="mriqc" ;;
+	--xcpd)
+		software="xcpd" ;;
 	--no-syn-sdc)
 		syn_sdc="False" ;;
 	--skull-strip-t1w)
@@ -863,6 +907,8 @@ if [ -z "$walltime" ]; then
                 walltime="24:00:00"
 	elif [[ "$software" == "mriqc" ]]; then
                 walltime="8:00:00"
+	elif [[ "$software" == "xcpd" ]]; then
+                walltime="24:00:00"
 	fi
 fi
 
