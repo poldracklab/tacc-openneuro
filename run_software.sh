@@ -4,7 +4,12 @@ set -eu
 
 get_subs () {
 	local raw_ds="$1"
-	local raw_corral_path="$RAW/$raw_ds"
+	if [[ "$software" == "xcpd" ]]; then
+		local raw_corral_path="$OPENNEURO/fmriprep/${raw_ds}-fmriprep"
+	else
+		local raw_corral_path="$RAW/$raw_ds"
+	fi
+
 	all_subs_temp=''
 	declare -ag all_subs_arr=()
 	if [ -z "$all_subs_arg" ]; then
@@ -37,9 +42,8 @@ get_subs () {
 			fi
 		done <<< "$all_subs_temp"
 	elif [[ "$software" == "xcpd" ]]; then
-		fmriprep_path="$OPENNEURO/fmriprep/${raw_ds}-fmriprep"
                	while read -r sub; do
-                        if [[ $(find "$raw_corral_path/sub-${sub}/" -wholename "*func") ]] && [[ $(find "$raw_corral_path/sub-${sub}/" -wholename "*anat") ]]; then
+                        if [[ -f "$raw_corral_path/sub-${sub}.html" ]]; then
                                 all_subs_arr+=("$sub")
 			fi
 		done <<< "$all_subs_temp"
@@ -91,10 +95,9 @@ create_derivatives_ds () {
 		datalad clone -d . https://github.com/poldracklab/tacc-openneuro.git code/tacc-openneuro
 		mkdir sourcedata
 		datalad clone -d . https://github.com/OpenNeuroDatasets/"${raw_ds}".git sourcedata/raw
+		datalad clone -d . https://github.com/templateflow/templateflow.git sourcedata/templateflow
 		if [[ "$software" == "xcpd" ]]; then
 			datalad clone -d . https://github.com/OpenNeuroDerivatives/"${raw_ds}-fmriprep".git sourcedata/fmriprep
-		else
-			datalad clone -d . https://github.com/templateflow/templateflow.git sourcedata/templateflow
 		fi
   
 		cp code/tacc-openneuro/README_"${software}".md README.md
@@ -142,36 +145,54 @@ setup_scratch_ds () {
 	local raw_ds="$1"
 	local raw_corral_path="$RAW/$raw_ds"
 	local raw_scratch_path="$STAGING/raw/$raw_ds"
-	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
+	if [[ "$full_mode" == "True" ]]; then
+		local derivatives_inprocess_path="$OPENNEURO/fmriprep/${raw_ds}-${software}"
+		cd "$derivatives_inprocess_path"
+		git switch --quiet full || git switch -c full
+	else
+		local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
+	fi
 	
 	if [[ "$rerun" == "True" ]]; then
 		push "$raw_ds"
 	fi
 	check_corral="True"
 	get_subs "$raw_ds"
-	
+
 	datalad save -d "$derivatives_inprocess_path" -m "pre-setup_scratch_ds"
 	if [[ "$skip_raw_clone" == "True" ]]; then
 		datalad update -d "$raw_scratch_path" -s origin --merge	
 	else
-		cheap_clone "$raw_corral_path" "$raw_scratch_path"
-
 		if [[ "$software" == "xcpd" ]]; then
 			fmriprep_corral_path="$OPENNEURO/fmriprep/${raw_ds}-fmriprep"
-			fmriprep_scratch_path="$STAGING/fmriprep/${raw_ds}-fmriprep"
+			fmriprep_scratch_path="$STAGING/derivatives/fmriprep/${raw_ds}-fmriprep"
+
+			cd "$fmriprep_corral_path" || exit
+			git show-ref --quiet  refs/heads/full && git switch full
 			cheap_clone "$fmriprep_corral_path" "$fmriprep_scratch_path"
+			git switch main
+
+			cd "$fmriprep_scratch_path" || exit
+			git show-ref --quiet refs/heads/full && git switch full
+
+			for sub in $all_subs; do
+				datalad get "sub-${sub}"
+			done
+		else
+			cheap_clone "$raw_corral_path" "$raw_scratch_path"
+
+			cd "$raw_scratch_path" || exit
+			find "$raw_corral_path/" -exec touch -h {} +
+			for sub in $all_subs; do
+				if [ -d "sub-${sub}" ]; then
+					find "sub-${sub}"/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
+						-exec datalad get {} +	
+				fi
+			done
+			find "$raw_scratch_path/" -exec touch -h {} +
 		fi
 	fi
-	cd "$raw_scratch_path" || exit
-	find "$raw_corral_path/" -exec touch -h {} +
-	for sub in $all_subs; do
-		if [ -d "sub-${sub}" ]; then
-			find "sub-${sub}"/ -regex ".*_\(T1w\|T2w\|bold\|sbref\|magnitude.*\|phase.*\|fieldmap\|epi\|FLAIR\|roi\)\.nii\(\.gz\)?" \
-				-exec datalad get {} +	
-		fi
-	done
-	find "$raw_scratch_path/" -exec touch -h {} +
 	
 	cheap_clone "$derivatives_inprocess_path" "$derivatives_scratch_path"
 	cd "$derivatives_scratch_path" || exit
@@ -190,31 +211,35 @@ setup_scratch_ds () {
 		if [ -d sourcedata/freesurfer/sub-"${sub}" ]; then
 			datalad get sourcedata/freesurfer/sub-"${sub}"
 		fi
+		if [ -d sub-"${sub}" ]; then
+			datalad get sub-"${sub}"
+		fi
 	done
-	datalad clone -d . --reckless ephemeral "$raw_scratch_path" sourcedata/raw
 	datalad clone -d . "$STAGING/containers" code/containers
 
 	if [[ "$software" == "xcpd" ]]; then
 		datalad clone -d . --reckless ephemeral "$fmriprep_scratch_path" sourcedata/fmriprep
-
-		for sub in $all_subs; do
-			datalad get "sourcedata/fmriprep/sub-${sub}"
-		done
 	else
-		datalad clone -d . --reckless ephemeral "$STAGING/templateflow" sourcedata/templateflow
-		for sub_ds in "$STAGING"/templateflow/tpl*; do
-			datalad clone  --reckless ephemeral -d . "$sub_ds" sourcedata/templateflow/"$(basename "$sub_ds")"
-		done
+		datalad clone -d . --reckless ephemeral "$raw_scratch_path" sourcedata/raw
 	fi
-	
+
+	datalad clone -d . --reckless ephemeral "$STAGING/templateflow" sourcedata/templateflow
+	for sub_ds in "$STAGING"/templateflow/tpl*; do
+		datalad clone  --reckless ephemeral -d . "$sub_ds" sourcedata/templateflow/"$(basename "$sub_ds")"
+	done
+
+	if [[ ! -f  code/bids-filters.json ]]; then
+		echo "{}" > code/bids-filters.json
+	fi
 }
 
 # Run fmriprep or mriqc
 run_software () {
 	local raw_ds="$1"
-	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}" 
 	local raw_path="$STAGING/raw/$raw_ds"
+	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}" 
 	local fs_path="$derivatives_scratch_path/sourcedata/freesurfer"
+
 	get_subs "$raw_ds"
 	
 	cd "$derivatives_scratch_path" || exit
@@ -226,27 +251,35 @@ run_software () {
 	fi
 
 	if [[ "$software" == "fmriprep" ]]; then
+		local sourcedata_input="sourcedata/raw"
 		local killjob_factors=".85,.25"
 		if [ -z "$subs_per_node" ]; then
 			local subs_per_node=4
 		fi
 		local mem_mb="$(( 150000 / subs_per_node ))"
-		local command=("--nthreads" "14" "--omp-nthreads" "7" "--skip-bids-validation" "--notrack" \
-			"--fs-license-file" "$fs_license" "--me-output-echos" "--cifti-output" \
-			"--skull-strip-t1w" "$skull_strip" "--mem_mb" "$mem_mb" "--bids-database-dir" "/tmp" \
-			"--md-only-boilerplate" "--level" "$level")
-		if [[ "$syn_sdc" ==  "True" ]]; then
-			command+=("--use-syn-sdc")
-			command+=("warn")
-		fi
-		if [[ "$ignore_jacobian" == "True" ]]; then
-			command+=("--ignore")
-			command+=("fmap-jacobian")
-		fi
-		if [[ "$aroma" == "True" ]]; then
-			command+=("--use-aroma")
+		if [[ "$full_mode" == "True" ]]; then
+			local command=("--skip-bids-validation" "--config-file" "$SCRATCH/fmriprep_config/${raw_ds}-fmriprep/sub-{p[sub]}.toml" "--level" "$level" \
+			"--nthreads" "14" "--omp-nthreads" "7" "--skip-bids-validation" "--notrack" "--cifti-output" "--project-goodvoxels"\
+			"--derivatives" "fmriprep=.")
+		else
+			local command=("--nthreads" "14" "--omp-nthreads" "7" "--skip-bids-validation" "--notrack" \
+				"--fs-license-file" "$fs_license" "--me-output-echos" "--cifti-output" \
+				"--skull-strip-t1w" "$skull_strip" "--mem_mb" "$mem_mb" "--bids-database-dir" "/tmp" \
+				"--md-only-boilerplate" "--level" "$level")
+			if [[ "$syn_sdc" ==  "True" ]]; then
+				command+=("--use-syn-sdc")
+				command+=("warn")
+			fi
+			if [[ "$ignore_jacobian" == "True" ]]; then
+				command+=("--ignore")
+				command+=("fmap-jacobian")
+			fi
+			if [[ "$aroma" == "True" ]]; then
+				command+=("--use-aroma")
+			fi
 		fi
 	elif [[ "$software" == "mriqc" ]]; then
+		local sourcedata_input="sourcedata/raw"
 		local killjob_factors=".85,.25"
 		if [ -z "$subs_per_node" ]; then
 			local subs_per_node=5
@@ -254,36 +287,55 @@ run_software () {
 		local mem_mb="$(( 150 / subs_per_node ))"
 		local command=("--nprocs" "11" "--ants-nthreads" "8" "--verbose-reports" "--dsname" "$raw_ds" "--mem_gb" "$mem_mb" "--notrack" "--no-sub")
 	elif [[ "$software" == "xcpd" ]]; then
+		local sourcedata_input="sourcedata/fmriprep"
 		local killjob_factors=".85,.25"
 		if [ -z "$subs_per_node" ]; then
 			local subs_per_node=28
 		fi
 		local mem_mb="$(( 150 / subs_per_node ))"
-		local command=("--mode" "abcd" "--motion-filter-type" "none" "--mem_gb" "$mem_mb" "--notrack")
+		local command=("--mode" "linc" "--fd-thresh" "0.2" "--dummy-scans" "auto" "--mem-mb" "6800" "--notrack" "--fs-license-file" "$fs_license")
+		#	"--atlases" "4S1056Parcels,4S156Parcels,4S256Parcels,4S356Parcels,4S456Parcels,4S556Parcels,4S656Parcels,4S756Parcels,4S856Parcels,4S956Parcels,Glasser,Gordon,HCP,Tian" )
 	fi
 	
-	if [[ -d "$fs_path" ]]; then
-		for sub in $all_subs; do
-			if [[ -d "$fs_path/sub-${sub}" ]]; then
-				datalad unlock "$fs_path/sub-${sub}"
-				find "$fs_path/sub-${sub}" -name "*IsRunning*" -delete
-			fi
-		done
-		git add -A
-		git diff-index --quiet HEAD || git commit -m "unlock freesurfer"
-	fi
+#	if [[ -d "$fs_path" ]]; then
+#		for sub in $all_subs; do
+#			if [[ -d "$fs_path/sub-${sub}" ]]; then
+#				datalad unlock "$fs_path/sub-${sub}"
+#				find "$fs_path/sub-${sub}" -name "*IsRunning*" -delete
+#			fi
+#			if [[ "$full_mode" == "True" ]]; then
+#				datalad unlock "sub-${sub}"
+#				datalad get "sub-${sub}.html"
+#				datalad unlock "sub-${sub}.html"	
+#			elif [[ "$software" == "xcpd" ]]; then
+#				datalad unlock "sourcedata/fmriprep/sub-${sub}"
+#			fi
+#		done
+#		git add -A
+#		git diff-index --quiet HEAD || git commit -m "unlock freesurfer"
+#	fi
 	
 	cd "$derivatives_scratch_path" || exit
-	for sub in $all_subs; do
-		if [[ -d "$derivatives_scratch_path/sub-${sub}" ]]; then
-			rm -rf "$derivatives_scratch_path/sub-${sub}"
-		fi
-		rm -rf "$derivatives_scratch_path/sub-${sub}"*.html
-		if [[ -f "$work_dir_scratch/${raw_ds}_sub-${sub}".tar ]]; then
-			tar -xvf "$work_dir_scratch/${raw_ds}_sub-${sub}".tar -C /  && rm -rf "$work_dir_scratch/${raw_ds}_sub-${sub}".tar
-			find "$work_dir_scratch/${raw_ds}_sub-${sub}" -type f -exec touch {} +
-		fi
-	done
+	if [[ "$full_mode" == "False" ]]; then
+		for sub in $all_subs; do
+			if [[ -d "$derivatives_scratch_path/sub-${sub}" ]]; then
+				rm -rf "$derivatives_scratch_path/sub-${sub}"
+			fi
+			rm -rf "$derivatives_scratch_path/sub-${sub}"*.html
+			if [[ -f "$work_dir_scratch/${raw_ds}_sub-${sub}".tar ]]; then
+				tar -xvf "$work_dir_scratch/${raw_ds}_sub-${sub}".tar -C /  && rm -rf "$work_dir_scratch/${raw_ds}_sub-${sub}".tar
+				find "$work_dir_scratch/${raw_ds}_sub-${sub}" -type f -exec touch {} +
+			fi
+		done
+	else
+		fmriprep_config_dir="$SCRATCH/fmriprep_config/${raw_ds}-fmriprep"
+		rm -rf "$fmriprep_config_dir"
+		mkdir "$fmriprep_config_dir"
+		for sub in $all_subs; do
+			toml=$(find "sub-${sub}" -name "fmriprep.toml" | head -n 1)
+			sed 's/scratch1/scratch2/g' "$toml" > "$fmriprep_config_dir/sub-${sub}.toml"
+		done
+	fi
 	
 	datalad save -r -m "pre-run save"
 
@@ -313,19 +365,33 @@ run_software () {
 		else
 			local queue="small"
 		fi
-		
+
 		${prefix:-} reproman run -r local --sub slurm --orc datalad-no-remote \
 			--bp sub="$sub_list" \
 			--jp num_processes="$processes" --jp num_nodes="$nodes" \
 			--jp walltime="$walltime" --jp queue="$queue" --jp launcher=true \
 			--jp job_name="${raw_ds}-${software}" --jp mail_type=END --jp mail_user="$user_email" \
 			--jp "container=code/containers/bids-${software_container}" --jp killjob_factors="$killjob_factors" \
-			sourcedata/raw "$derivatives_scratch_path" participant --participant-label '{p[sub]}' \
+			-o "sub-{p[sub]}.html" -o "sub-{p[sub]}/figures" \
+			"$sourcedata_input" "$derivatives_scratch_path" participant --participant-label '{p[sub]}' \
 			-w "/node_tmp/work_dir/${software}/${raw_ds}_sub-{p[sub]}" -vv "${command[@]}" \
-			--bids-filter-file "code/bids-filters.json" \
+			--bids-filter-file "code/bids-filters.json"
 										
 		echo
 	done
+	
+#	for sub in $all_subs; do
+#		figures_path="$derivatives_scratch_path/sub-${sub}/figures"
+#		if [ -d "$figures" ]; then
+#			datalad unlock "$figures"
+#		fi
+#
+#		html_path="$derivatives_scratch_path/sub-${sub}.html"
+#		if [ -d "$html_path" ]; then
+#			datalad unlock "$html_path"
+#		fi
+#	done
+
 }
 
 convertsecs () {
@@ -338,14 +404,32 @@ convertsecs () {
 push () {
 	local raw_ds="$1"
 	local derivatives_scratch_path="$STAGING/derivatives/$software/${raw_ds}-${software}"
-	local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
+
+	if [[ "$full_mode" == "True" ]]; then
+		local derivatives_inprocess_path="$OPENNEURO/$software/${raw_ds}-${software}"
+		rm -rf "$derivatives_scratch_path/remora"*
+		
+		cd "$derivatives_inprocess_path"
+		git switch --quiet full || exit
+		git annex restage
+	else
+		local derivatives_inprocess_path="$OPENNEURO/in_process/$software/${raw_ds}-${software}"
+	fi
+
 	find "$derivatives_scratch_path" -name ".proc*" -type f -delete
 	git -C "$derivatives_scratch_path" annex add . --exclude "code/*" --exclude "sourcedata/raw/*" --exclude "sourcedata/templateflow/*"
 	datalad save -d "$derivatives_scratch_path" -m "pre-push save (scratch)"
-	datalad save -d "$derivatives_inprocess_path" -m "pre-push save (corral)"
-	datalad update --merge -d "$derivatives_inprocess_path" -s scratch
-	datalad update --merge -d "$derivatives_scratch_path" -s origin
+
+	if [[ "$full_mode" == "False" ]]; then
+		datalad save -d "$derivatives_inprocess_path" -m "pre-push save (corral)"
+		datalad update --merge -d "$derivatives_inprocess_path" -s scratch
+		datalad update --merge -d "$derivatives_scratch_path" -s origin
+	fi
 	datalad push --to origin -d "$derivatives_scratch_path"
+
+	cd "$derivatives_inprocess_path"
+	git switch --quiet main 
+	git annex restage
 }
 
 check_results () {
@@ -387,7 +471,7 @@ check_results () {
 	else
 		reproman_logs="$(find "$derivatives_scratch_path/.reproman/jobs/local/" -maxdepth 1 -mindepth 1 | sort -nr)"
 	fi
-	local sub_array
+	local s${software}y
 	readarray -t sub_array < <(find "$raw_corral_path" -maxdepth 1 -type d -name "sub-*" -printf '%f\n' | sed 's/sub-//g' | sort )
 	local success_sub_array=()
 	local failed_sub_array=()
@@ -590,9 +674,14 @@ clone_derivatives () {
 	local raw_path="$STAGING/raw/$raw_ds"
 	
 	if [ -d "$derivatives_scratch_path" ]; then
-		push "$raw_ds"	
+		push "$raw_ds"
 	fi
 	
+	if [[ "$full_mode" == "True" ]]; then
+		derivatives_inprocess_path="$derivatives_final_path"
+		git -C "$derivatives_inprocess_path" switch full
+	fi
+
 	# Move remora logs to corral
 	if compgen -G "$derivatives_inprocess_path/remora*"; then
 		datalad unlock -d "$derivatives_inprocess_path" "$derivatives_inprocess_path"/remora*
@@ -601,7 +690,10 @@ clone_derivatives () {
 		datalad save -d "$derivatives_inprocess_path" -m "remove remora logs from ds"
 	fi
 	
-	mv "$derivatives_inprocess_path" "$derivatives_final_path"
+	if [[ "$full_mode" == "False" ]]; then
+		mv "$derivatives_inprocess_path" "$derivatives_final_path"
+	fi
+	
 	cd "$derivatives_final_path" || exit
 	version=$(jq -r '.GeneratedBy[0].Version' dataset_description.json)
 	sed -i "s/vVERSION/v${version}/g" README.md
@@ -609,20 +701,22 @@ clone_derivatives () {
 	jq --arg name "${raw_ds}-${software}" '.Name = $name' dataset_description.json | jq '. += {"Authors": ["OpenNeuro Preprocessing Team"]}' > "$tmpfile"
 	mv -f "$tmpfile" dataset_description.json
 
-	datalad save -m "update README.md and dataset_description.json"
-	
 	git config --file .gitmodules --replace-all submodule.code/containers.url https://github.com/ReproNim/containers.git
-	git config --file .gitmodules --unset-all submodule.code/containers.datalad-url
+	git config --file .gitmodules --unset-all submodule.code/containers.datalad-url || :
+	jq ".DatasetLinks.${software} |= \"https://github.com/OpenNeuroDerivatives/${raw_ds}-${software}.git\"" dataset_description.json > dataset_description.json
 	if grep -q "OpenNeuroForks" .git/config; then
 	       	git config --file .gitmodules --replace-all submodule.sourcedata/raw.url https://github.com/OpenNeuroForks/"$raw_ds".git
+		jq ".DatasetLinks.raw |= \"https://github.com/OpenNeuroForks/$raw_ds.git\"" dataset_description.json > dataset_description.json
+
 	else
 		git config --file .gitmodules --replace-all submodule.sourcedata/raw.url https://github.com/OpenNeuroDatasets/"$raw_ds".git
+		jq ".DatasetLinks.raw |= \"https://github.com/OpenNeuroDatasets/$raw_ds.git\"" dataset_description.json > dataset_description.json
 	fi
-	git config --file .gitmodules --unset-all submodule.sourcedata/raw.datalad-url
+	git config --file .gitmodules --unset-all submodule.sourcedata/raw.datalad-url || :
 	git config --file .gitmodules --replace-all submodule.sourcedata/templateflow.url https://github.com/templateflow/templateflow.git
-	git config --file .gitmodules --unset-all submodule.sourcedata/templateflow.datalad-url
+	git config --file .gitmodules --unset-all submodule.sourcedata/templateflow.datalad-url || :
 	git-annex lock
-	datalad save -r -m "change gitmodule urls to origin"
+	datalad save -r -m "update README.md and dataset_description.json; change gitmodule urls to origin"
 	datalad install . -r
 	
 	if [[ "$software" == "fmriprep" ]] && [ -d "$raw_path" ]; then
@@ -770,6 +864,7 @@ inode="False"
 prefix=''
 aroma="False"
 level="minimal"
+full_mode="False"
 
 # initialize flags
 while [[ "$#" -gt 0 ]]; do
@@ -779,7 +874,13 @@ while [[ "$#" -gt 0 ]]; do
 	-m|--mriqc)
 		software="mriqc" ;;
 	--xcpd)
-		software="xcpd" ;;
+		software="xcpd"
+		skip_raw_download="True" ;;
+	--full-mode)
+		software="fmriprep"
+		full_mode="True"
+		level="full"
+		skip_create_derivatives="True" ;;
 	--no-syn-sdc)
 		syn_sdc="False" ;;
 	--skull-strip-t1w)
@@ -904,11 +1005,15 @@ fi
 
 if [ -z "$walltime" ]; then
 	if [[ "$software" == "fmriprep" ]]; then
-                walltime="24:00:00"
+                if [[ "$full_mode" == "True" ]]; then
+			walltime="3:00:00"
+		else
+			walltime="24:00:00"
+		fi
 	elif [[ "$software" == "mriqc" ]]; then
                 walltime="8:00:00"
 	elif [[ "$software" == "xcpd" ]]; then
-                walltime="24:00:00"
+                walltime="8:00:00"
 	fi
 fi
 

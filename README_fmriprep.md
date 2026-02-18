@@ -13,7 +13,7 @@ Jobs were submitted using [ReproMan](https://reproman.readthedocs.io/en/latest/)
 
 ## Acknowledgements
 
-These derivatives were generated on the [Texas Advanced Computing Center](https://www.tacc.utexas.edu/) Frontera computing system [1] through their [Pathways allocation](https://frontera-portal.tacc.utexas.edu/allocations/). This work was also funded by the [NIH BRAIN Initiative](https://grantome.com/grant/NIH/R24-MH117179-03).
+These derivatives were generated on the [Texas Advanced Computing Center](https://www.tacc.utexas.edu/) Frontera computing system [1] through their [Pathways allocation](https://frontera-portal.tacc.utexas.edu/allocations/). This work was also funded by the [NIH BRAIN Initiative](https://reporter.nih.gov/project-details/11128603).
 
 [1]: Dan Stanzione, John West, R. Todd Evans, Tommy Minyard, Omar Ghattas, and Dhabaleswar K. Panda. 2020. Frontera: The Evolution of Leadership Computing at the National Science Foundation. In Practice and Experience in Advanced Research Computing (PEARC ’20), July 26–30, 2020, Portland, OR, USA. ACM, New York, NY, USA, 11 pages. https://doi.org/10.1145/3311790.3396656
 
