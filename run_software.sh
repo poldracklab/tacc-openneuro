@@ -792,8 +792,6 @@ publish_to_github () {
 	datalad create-sibling-github -d . OpenNeuroDerivatives/"${raw_ds}-${software}" --publish-depends openneuro-derivatives --access-protocol ssh --existing reconfigure --credential 20270105
 	datalad push --to github -f checkdatapresent
 	gh repo edit OpenNeuroDerivatives/"${raw_ds}-${software}" --description ''
-	sleep 5
-	datalad clone -d "$OpenNeuroDerivatives_path" https://github.com/OpenNeuroDerivatives/"${raw_ds}-${software}".git "$OpenNeuroDerivatives_path/${raw_ds}-${software}"
 }
 
 rsync_containers_templateflow () {
